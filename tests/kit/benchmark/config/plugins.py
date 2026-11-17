@@ -15,7 +15,7 @@ import torch
 from torch import nn
 from torch.distributed.fsdp import MixedPrecision
 
-from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin, TorchDDPPlugin
+from colossalai.booster.plugin import GeminiPlugin, HybridParallelPlugin, LowLevelZeroPlugin, TorchDDPPlugin
 from colossalai.booster.plugin.torch_fsdp_plugin import TorchFSDPPlugin
 
 
@@ -23,12 +23,18 @@ from colossalai.booster.plugin.torch_fsdp_plugin import TorchFSDPPlugin
 class PluginConfig:
     """A plugin and precision to measure under. ``plugin_fn`` builds the plugin inside each process; ``dtype`` is what
     the matmuls run in, which selects the device's peak for MFU. A plain-PyTorch baseline has no plugin but a
-    ``wrap_fn(model, device)`` that parallelizes the model itself."""
+    ``wrap_fn(model, device)`` that parallelizes the model itself.
+
+    Only HybridParallelPlugin (and GeminiPlugin with tensor parallelism, not used here) replaces the model's modules,
+    by a shardformer policy, when it boosts the model; DDP, LowLevelZeRO, FSDP and Gemini without tensor parallelism
+    train the model as built."""
 
     plugin_fn: Optional[Callable]
     dtype: str
     mixed_precision: Optional[str] = None
     wrap_fn: Optional[Callable] = None
+    # the plugin replaces modules by a shardformer policy, and takes the model's own (BenchmarkSpec.shardformer_policy)
+    takes_policy: bool = False
 
 
 def _fsdp2():
@@ -74,12 +80,20 @@ CONFIGS: Dict[str, PluginConfig] = {
     "ddp_fp16": PluginConfig(TorchDDPPlugin, "fp16", "fp16"),
     "zero1_bf16": PluginConfig(partial(LowLevelZeroPlugin, stage=1, precision="bf16"), "bf16"),
     "zero2_bf16": PluginConfig(partial(LowLevelZeroPlugin, stage=2, precision="bf16"), "bf16"),
+    "zero1_bf16_offload": PluginConfig(
+        partial(LowLevelZeroPlugin, stage=1, precision="bf16", cpu_offload=True), "bf16"
+    ),
     "zero2_bf16_offload": PluginConfig(
         partial(LowLevelZeroPlugin, stage=2, precision="bf16", cpu_offload=True), "bf16"
     ),
     "gemini_bf16": PluginConfig(partial(GeminiPlugin, precision="bf16"), "bf16"),
     "fsdp_fp32": PluginConfig(TorchFSDPPlugin, "fp32"),
     "fsdp_bf16": PluginConfig(partial(TorchFSDPPlugin, mixed_precision=FSDP_BF16), "bf16"),
+    # data parallel only, with the model's shardformer policy applied: what lines whose training uses
+    # HybridParallelPlugin measure (no tensor or pipeline parallelism in phase 2)
+    "hybrid_zero2_bf16": PluginConfig(
+        partial(HybridParallelPlugin, tp_size=1, pp_size=1, zero_stage=2, precision="bf16"), "bf16", takes_policy=True
+    ),
     # the built-in baseline, without ColossalAI
     "pytorch_fsdp2_bf16": PluginConfig(None, "bf16", wrap_fn=fsdp2_bf16),
 }

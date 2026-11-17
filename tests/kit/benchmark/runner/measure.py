@@ -42,6 +42,7 @@ from colossalai.testing import spawn
 from tests.kit.numerics.capture.plugins import make_optimizer
 
 from ..config.model import BenchmarkSpec, spec_of
+from ..config.optimizers import build_optimizer
 from ..config.plugins import CONFIGS
 from ..config.setup import Setup
 from . import timeline
@@ -118,17 +119,18 @@ def _train(spec: BenchmarkSpec, setup: Setup) -> Dict[str, Any]:
     model = spec.build(setup.size, setup.implementation)
     if setup.gradient_checkpointing:
         # non-reentrant: the variant HuggingFace recommends and every plugin of this tool supports
-        model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+        spec.checkpointing_fn(model, True)
     model.train()
     parameters = sum(p.numel() for p in model.parameters())
     generator = torch.Generator().manual_seed(setup.seed + rank)
     batch = spec.batch_fn(model, setup.micro_batch, setup.seq_len, generator)
     tokens = spec.tokens_fn(batch)
     if config.plugin_fn is not None:
-        plugin = config.plugin_fn()
+        policy = {"custom_policy": spec.shardformer_policy()} if config.takes_policy and spec.shardformer_policy else {}
+        plugin = config.plugin_fn(**policy)
         booster = Booster(plugin=plugin, mixed_precision=config.mixed_precision)
         trainable = [p for p in model.parameters() if p.requires_grad]
-        optimizer = make_optimizer(plugin, partial(torch.optim.AdamW, lr=setup.lr), trainable)
+        optimizer = make_optimizer(plugin, partial(build_optimizer, setup.optimizer, lr=setup.lr), trainable)
         optimizer_name = type(optimizer).__name__
         model, optimizer, *_ = booster.boost(model, optimizer)
 
@@ -137,7 +139,7 @@ def _train(spec: BenchmarkSpec, setup: Setup) -> Dict[str, Any]:
 
     else:
         model = config.wrap_fn(model, device)
-        optimizer = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=setup.lr)
+        optimizer = build_optimizer(setup.optimizer, [p for p in model.parameters() if p.requires_grad], setup.lr)
         optimizer_name = type(optimizer).__name__
 
         def backward(loss):
@@ -160,8 +162,7 @@ def _train(spec: BenchmarkSpec, setup: Setup) -> Dict[str, Any]:
         start = time.perf_counter()
         # names each step in a profiler trace, on the host and the device timeline
         with torch.profiler.record_function(f"{timeline.STEP_ANNOTATION}{step}"):
-            output = model(**batch)
-            loss = spec.loss_fn(output)
+            loss = spec.loss_fn(model, batch)
             backward(loss)
             synchronize()
             backward_end = time.perf_counter()

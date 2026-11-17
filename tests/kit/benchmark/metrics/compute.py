@@ -13,12 +13,14 @@ Two independent sources:
 - ``decoder_flops_per_token``: the closed formula for a HuggingFace decoder-only model with a gated MLP, from its
   config alone.
 - ``counted_flops_per_token``: ``torch.utils.flop_counter.FlopCounterMode`` over one forward and backward of the
-  model built on the meta device (as fake tensors), so no memory is used and any model can be counted. Calls to
-  ``scaled_dot_product_attention`` are counted from their shapes instead (``AttentionCounter``), halved when causal:
-  the counter cannot see a mask, and on the meta device the call would run as plain matmuls over the whole matrix.
+  model built on the meta device (as fake tensors), so no memory is used. Attention is counted from its shapes instead
+  (``AttentionCounter``): halved when causal and limited to the window when sliding, as transformers' attention
+  modules declare it; a direct ``scaled_dot_product_attention`` call with a mask tensor is counted whole and reported.
   Attention written as plain matmuls (``attn_implementation="eager"``) is counted whole, as it is computed whole.
 
-An entry with a formula reports both, and their difference is flagged above ``FLOPS_MISMATCH_LIMIT``. The counter
+The formula is what MFU uses; the count checks it, and a difference above ``FLOPS_MISMATCH_LIMIT`` is flagged. The
+count sees the matmuls the reference implementation runs on the meta device, so it misses custom kernels without a
+registered formula (``BenchmarkSpec.flop_formulas``) and cannot route a MoE layer (which needs values). The counter
 also sees the few matmuls that are not weights, e.g. a rotary embedding's frequency product (head_dim / 2 FLOPs per
 token); for real models they are below 1e-6 of the total.
 
@@ -43,6 +45,7 @@ Devices are recognized by ``accelerator.get_device_name()``. A device or dtype m
 report says, rather than a guessed one.
 """
 
+import contextlib
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 from unittest import mock
@@ -54,6 +57,8 @@ from torch.utils.flop_counter import FlopCounterMode
 
 # a formula and the counted FLOPs that differ by more than this disagree about the model: one of them is wrong
 FLOPS_MISMATCH_LIMIT = 0.05
+# where the model FLOPs per token come from
+FORMULA, COUNTED = "formula", "counted"
 
 
 def decoder_flops_per_token(model: nn.Module, seq_len: int) -> float:
@@ -89,47 +94,83 @@ class _Attention(torch.autograd.Function):
     """Stands in for attention while counting: outputs and gradients of the right shapes, no computation."""
 
     @staticmethod
-    def forward(ctx, counter, causal, query, key, value):
-        ctx.counter, ctx.causal, ctx.shapes = counter, causal, (query.shape, key.shape, value.shape)
-        counter.add(*ctx.shapes, causal=causal, backward=False)
+    def forward(ctx, counter, causal, window, query, key, value):
+        ctx.counter, ctx.causal, ctx.window = counter, causal, window
+        ctx.shapes = (query.shape, key.shape, value.shape)
+        counter.add(*ctx.shapes, causal=causal, window=window, backward=False)
         return query.new_empty(*query.shape[:-1], value.shape[-1])
 
     @staticmethod
     def backward(ctx, grad):
-        ctx.counter.add(*ctx.shapes, causal=ctx.causal, backward=True)
-        return (None, None, *(grad.new_zeros(shape) for shape in ctx.shapes))
+        ctx.counter.add(*ctx.shapes, causal=ctx.causal, window=ctx.window, backward=True)
+        return (None, None, None, *(grad.new_zeros(shape) for shape in ctx.shapes))
+
+
+def attended_pairs(q_len: int, kv_len: int, causal: bool, window: Optional[int] = None) -> float:
+    """Query-key pairs an attention computes: all of them; half for a causal mask; for a causal sliding window of
+    ``window`` keys, ``q_len · window − window² / 2`` (the first ``window`` queries see fewer keys), which is half of
+    the full matrix when the window covers the whole sequence."""
+    if not causal:
+        return q_len * kv_len
+    if window is None or window >= kv_len:
+        return q_len * kv_len / 2
+    return q_len * window - window * window / 2
 
 
 class AttentionCounter:
-    """Replaces ``torch.nn.functional.scaled_dot_product_attention`` while counting, and adds up the FLOPs of the
-    score and value products from each call's shapes: ``2 · batch · heads · q_len · kv_len · (head_dim + v_dim)``
-    forward, twice that backward, halved when the call or the model is causal (``is_causal=True``, or ``causal`` for
-    a model that passes its causal mask as a tensor, whose values are not known on the meta device)."""
+    """Stands in for attention while counting, and adds up the FLOPs of the score and value products from each call's
+    shapes: ``2 · batch · heads · pairs · (head_dim + v_dim)`` forward, twice that backward, where ``pairs`` is
+    ``attended_pairs``.
 
-    def __init__(self, causal: bool):
-        self.causal, self.flops = causal, 0
+    It replaces two entry points:
 
-    def __call__(self, query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, **kwargs):
-        return _Attention.apply(self, is_causal or self.causal, query, key, value)
+    - ``hf_attention``, the ``"sdpa"`` attention of transformers (``AttentionInterface``), which is given the
+      attention module: causality and the sliding window come from the module's own ``is_causal`` and
+      ``sliding_window``, as transformers itself decides them, whatever mask tensor it passes;
+    - ``sdpa``, ``torch.nn.functional.scaled_dot_product_attention`` called directly: only ``is_causal`` tells. A call
+      with a mask tensor and ``is_causal=False`` is counted whole, as the mask's values are not known on the meta
+      device, and counted in ``unseen_masks``, so that the report can say the count may overstate it."""
 
-    def add(self, query, key, value, causal: bool, backward: bool):
+    def __init__(self):
+        self.flops, self.unseen_masks = 0, 0
+
+    def hf_attention(self, module, query, key, value, attention_mask, dropout=0.0, scaling=None, is_causal=None, **kw):
+        causal = is_causal if is_causal is not None else getattr(module, "is_causal", True)
+        window = kw.get("sliding_window") or getattr(module, "sliding_window", None)
+        # transformers returns (batch, q_len, heads, v_dim) and no weights
+        return _Attention.apply(self, causal, window, query, key, value).transpose(1, 2), None
+
+    def sdpa(self, query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, **kwargs):
+        if attn_mask is not None and not is_causal:
+            self.unseen_masks += 1
+        return _Attention.apply(self, is_causal, None, query, key, value)
+
+    def add(self, query, key, value, causal: bool, window: Optional[int], backward: bool):
         *batch, q_len, head_dim = query
-        products = 2 * q_len * key[-2] * (head_dim + value[-1])
+        products = 2 * attended_pairs(q_len, key[-2], causal, window) * (head_dim + value[-1])
         for size in batch:
             products *= size
-        if causal:
-            products //= 2
-        self.flops += 2 * products if backward else products
+        self.flops += int(2 * products if backward else products)
 
 
-def counted_flops_per_token(spec, size: str, seq_len: int, micro_batch: int, recompute: bool = False) -> float:
+def _hf_attention_patch(counter: AttentionCounter):
+    """Replaces transformers' ``"sdpa"`` attention for every model while counting; nothing without transformers."""
+    try:
+        from transformers.modeling_utils import AttentionInterface
+    except ImportError:
+        return contextlib.nullcontext()
+    return mock.patch.dict(AttentionInterface._global_mapping, {"sdpa": counter.hf_attention})
+
+
+def count_flops(spec, size: str, seq_len: int, micro_batch: int, recompute: bool = False) -> Dict[str, Any]:
     """FLOPs per token that ``FlopCounterMode`` counts over one forward and backward of the model at ``size`` in its
-    reference implementation (``BenchmarkSpec.reference_implementation``), on the meta device. ``recompute=True``
-    enables non-reentrant gradient checkpointing, so that the recomputed forward is counted too (hardware FLOPs).
+    reference implementation (``BenchmarkSpec.reference_implementation``), on the meta device, and how many attention
+    calls had masks it could not see. ``recompute=True`` enables non-reentrant gradient checkpointing, so that the
+    recomputed forward is counted too (hardware FLOPs).
 
     The meta tensors are also fake tensors (``FakeTensorMode``): code that branches on tensor values only when it is
     not being traced, such as HuggingFace's check for packed sequences, then takes its traced path instead of reading
-    a value that a meta tensor does not have."""
+    a value that a meta tensor does not have. Custom operators count through ``BenchmarkSpec.flop_formulas``."""
     with FakeTensorMode(allow_non_fake_inputs=True), torch.device("meta"):
         model = spec.build(size, spec.reference_implementation)
         if recompute:
@@ -139,23 +180,34 @@ def counted_flops_per_token(spec, size: str, seq_len: int, micro_batch: int, rec
                     "(torch.random.fork_rng needs a device module), so hardware FLOPs cannot be counted"
                 )
             # counting does not depend on random numbers; the meta device has no RNG state to restore
-            kwargs = {"use_reentrant": False, "preserve_rng_state": False}
-            model.gradient_checkpointing_enable(gradient_checkpointing_kwargs=kwargs)
+            spec.checkpointing_fn(model, False)
         model.train()
         with torch.device("cpu"):
             batch = spec.batch_fn(model, micro_batch, seq_len, torch.Generator().manual_seed(0))
         tokens = spec.tokens_fn(batch)
         batch = {k: v.to("meta") if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
-        counter, attention = FlopCounterMode(display=False), AttentionCounter(spec.causal_attention)
-        with counter, mock.patch.object(torch.nn.functional, "scaled_dot_product_attention", attention):
-            spec.loss_fn(model(**batch)).backward()
-    return (counter.get_total_flops() + attention.flops) / tokens
+        counter = FlopCounterMode(display=False, custom_mapping=dict(spec.flop_formulas) or None)
+        attention = AttentionCounter()
+        with (
+            counter,
+            _hf_attention_patch(attention),
+            mock.patch.object(torch.nn.functional, "scaled_dot_product_attention", attention.sdpa),
+        ):
+            spec.loss_fn(model, batch).backward()
+    return {"per_token": (counter.get_total_flops() + attention.flops) / tokens, "unseen_masks": attention.unseen_masks}
+
+
+def counted_flops_per_token(spec, size: str, seq_len: int, micro_batch: int, recompute: bool = False) -> float:
+    """``count_flops``'s FLOPs per token."""
+    return count_flops(spec, size, seq_len, micro_batch, recompute)["per_token"]
 
 
 def flops_per_token(spec, size: str, seq_len: int, micro_batch: int, gradient_checkpointing: bool) -> Dict[str, Any]:
     """What a report records about FLOPs: the model FLOPs per token used for MFU (the formula's when the entry has
-    one, else the counted), both sources and their difference, and the hardware FLOPs per token for HFU."""
-    counted = counted_flops_per_token(spec, size, seq_len, micro_batch)
+    one, else the counted), both sources and their difference, attention masks the count could not see, and the
+    hardware FLOPs per token for HFU."""
+    count = count_flops(spec, size, seq_len, micro_batch)
+    counted = count["per_token"]
     analytic: Optional[float] = None
     if spec.flops_fn is not None:
         with torch.device("meta"):
@@ -166,11 +218,12 @@ def flops_per_token(spec, size: str, seq_len: int, micro_batch: int, gradient_ch
     )
     return {
         "model_flops_per_token": model,
-        "source": "formula" if analytic is not None else "counted",
+        "source": FORMULA if analytic is not None else COUNTED,
         "analytic": analytic,
         "counted": counted,
         "difference": None if analytic is None else (counted - analytic) / analytic,
         "counted_implementation": spec.reference_implementation,
+        "unseen_masks": count["unseen_masks"],
         # with gradient checkpointing the recomputed forward is done too; without, hardware and model FLOPs are equal
         "hardware_flops_per_token": hardware if hardware is not None else model,
     }

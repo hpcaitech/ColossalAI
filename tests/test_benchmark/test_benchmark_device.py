@@ -43,7 +43,9 @@ def _setup(config, seq_len=16, **kwargs):
 
 
 @pytest.mark.skipif(_devices() < 1, reason="needs a device")
-@pytest.mark.parametrize("config", ["zero2_bf16", "gemini_bf16", "fsdp_bf16", "ddp_fp16"])
+@pytest.mark.parametrize(
+    "config", ["zero2_bf16", "zero1_bf16_offload", "gemini_bf16", "fsdp_bf16", "ddp_fp16", "hybrid_zero2_bf16"]
+)
 @rerun_if_address_is_in_use()
 def test_memory_statistics_are_ordered(config):
     measurement = run_single(_setup(config), repeats=1, spec=TINY)

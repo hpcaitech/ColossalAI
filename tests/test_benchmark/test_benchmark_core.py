@@ -11,12 +11,15 @@ import transformers
 
 from colossalai.testing import rerun_if_address_is_in_use
 from tests.kit.benchmark import BenchmarkSpec, decoder_flops_per_token
-from tests.kit.benchmark.config.model import DEFAULT_IMPLEMENTATION
+from tests.kit.benchmark.config.model import DEFAULT_IMPLEMENTATION, enable_checkpointing
 from tests.kit.benchmark.config.plugins import CONFIGS
 from tests.kit.benchmark.config.setup import Setup, parse_field
 from tests.kit.benchmark.metrics.compute import (
+    COUNTED,
     PEAKS,
     AttentionCounter,
+    attended_pairs,
+    count_flops,
     counted_flops_per_token,
     flops_per_token,
     lookup,
@@ -61,7 +64,6 @@ TINY = BenchmarkSpec(
     models={"tiny": tiny_llama},
     seq_len=16,
     micro_batch=2,
-    causal_attention=True,
     flops_fn=decoder_flops_per_token,
     implementations={"unchanged": unchanged, "fused": not_on_meta},
 )
@@ -167,6 +169,9 @@ def test_setup_and_spec_validation():
         TINY.build("tiny", "triton")
     assert parse_field("config", "pytorch_fsdp2_bf16") == "pytorch_fsdp2_bf16"
     assert parse_field("seq_len", "8192") == 8192 and parse_field("gradient_checkpointing", "True") is True
+    assert parse_field("optimizer", "adamw") == "adamw"
+    with pytest.raises(ValueError, match="unknown optimizer"):
+        Setup(entry="e", size="s", config="ddp_fp32", seq_len=8, micro_batch=1, optimizer="sgd9")
     with pytest.raises(ValueError):
         parse_field("hidden_size", "1")
 
@@ -263,6 +268,15 @@ def test_summary_flags_a_formula_that_disagrees_with_the_counted_flops():
     assert summarize([record([1.0])], dict(FLOPS, difference=None), PEAK)["flags"] == []
 
 
+def test_summary_flags_mfu_without_a_formula_and_unseen_masks():
+    counted = dict(FLOPS, source=COUNTED, difference=None)
+    assert any("not verified" in flag for flag in summarize([record([1.0])], counted, PEAK)["flags"])
+    masked = summarize([record([1.0])], dict(counted, unseen_masks=3), PEAK)["flags"]
+    assert any("3 attention calls" in flag and "overstated" in flag for flag in masked)
+    with_formula = summarize([record([1.0])], dict(FLOPS, unseen_masks=3), PEAK)["flags"]
+    assert any("MFU follows the formula" in flag for flag in with_formula)
+
+
 def test_formula_matches_the_counted_flops():
     formula = decoder_flops_per_token(tiny_llama(), 16)
     counted = counted_flops_per_token(TINY, "tiny", seq_len=16, micro_batch=2)
@@ -296,19 +310,136 @@ def test_recomputation_that_cannot_be_counted_says_so():
         counted_flops_per_token(TINY, "tiny", seq_len=16, micro_batch=2, recompute=True)
 
 
-def test_causal_attention_flops_are_halved():
+def test_attention_is_counted_as_its_module_declares():
     model = tiny_llama()
     # 12 · layers · heads · head_dim per extra token of context, halved for the causal mask
     assert decoder_flops_per_token(model, 18) - decoder_flops_per_token(model, 16) == 2 * 12 * 2 * 4 * 8 // 2
-    # one call over (batch 2, 4 heads, 16 queries, 16 keys, head_dim 8): 2 · 2·4·16·16 · (8 + 8) forward
-    full, causal = AttentionCounter(causal=False), AttentionCounter(causal=True)
-    for counter in (full, causal):
+    assert attended_pairs(16, 16, causal=False) == 256 and attended_pairs(16, 16, causal=True) == 128
+    assert attended_pairs(16, 16, causal=True, window=16) == 128 and attended_pairs(16, 16, True, window=8) == 96
+
+    # one call over (batch 2, 4 heads, 16 queries, 16 keys, head_dim 8): 2 · 2·4·16·16 · (8 + 8) forward, 3x with
+    # backward; transformers' attention returns (batch, q_len, heads, v_dim)
+    full = 3 * 2 * 2 * 4 * 16 * 16 * 16
+
+    def call(module, **kwargs):
+        counter = AttentionCounter()
         q = torch.empty(2, 4, 16, 8, requires_grad=True)
-        counter(q, torch.empty(2, 4, 16, 8), torch.empty(2, 4, 16, 8)).sum().backward()
-    assert full.flops == 3 * 2 * 2 * 4 * 16 * 16 * 16 and causal.flops == full.flops // 2
-    flagged = AttentionCounter(causal=False)
-    flagged(torch.empty(1, 1, 4, 2), torch.empty(1, 1, 4, 2), torch.empty(1, 1, 4, 2), is_causal=True)
-    assert flagged.flops == 2 * 4 * 4 * 4 // 2
+        out, weights = counter.hf_attention(
+            module, q, torch.empty(2, 4, 16, 8), torch.empty(2, 4, 16, 8), None, **kwargs
+        )
+        assert out.shape == (2, 16, 4, 8) and weights is None
+        out.sum().backward()
+        return counter.flops
+
+    class Module:
+        def __init__(self, is_causal, sliding_window=None):
+            self.is_causal, self.sliding_window = is_causal, sliding_window
+
+    assert call(Module(is_causal=False)) == full
+    assert call(Module(is_causal=True)) == full // 2
+    assert call(Module(is_causal=True, sliding_window=8)) == full * 96 // 256
+    assert call(Module(is_causal=True), is_causal=False) == full  # transformers passes is_causal explicitly
+
+    direct = AttentionCounter()
+    direct.sdpa(torch.empty(1, 1, 4, 2), torch.empty(1, 1, 4, 2), torch.empty(1, 1, 4, 2), is_causal=True)
+    assert direct.flops == 2 * 4 * 4 * 4 // 2 and direct.unseen_masks == 0
+    direct.sdpa(torch.empty(1, 1, 4, 2), torch.empty(1, 1, 4, 2), torch.empty(1, 1, 4, 2), attn_mask=torch.empty(4, 4))
+    assert direct.unseen_masks == 1
+
+
+def tiny_qwen3_sliding(window=None):
+    config = transformers.Qwen3Config(
+        vocab_size=256,
+        hidden_size=32,
+        intermediate_size=64,
+        num_hidden_layers=2,
+        num_attention_heads=4,
+        num_key_value_heads=2,
+        head_dim=8,
+        use_sliding_window=window is not None,
+        sliding_window=window,
+        max_window_layers=0,
+        layer_types=["sliding_attention" if window else "full_attention"] * 2,
+        attn_implementation="sdpa",
+        use_cache=False,
+    )
+    return transformers.Qwen3ForCausalLM(config)
+
+
+def test_sliding_window_layers_count_only_their_window():
+    full = BenchmarkSpec(models={"tiny": tiny_qwen3_sliding})
+    windowed = BenchmarkSpec(models={"tiny": lambda: tiny_qwen3_sliding(8)})
+    counted_full = count_flops(full, "tiny", seq_len=16, micro_batch=2)
+    counted_windowed = count_flops(windowed, "tiny", seq_len=16, micro_batch=2)
+    assert counted_full["unseen_masks"] == counted_windowed["unseen_masks"] == 0
+    # 2 layers, 4 heads, head_dim 8, 3x for backward, per token of 16: (128 - 96) pairs fewer per head and layer
+    expected = 2 * 3 * 2 * 4 * (128 - 96) * (8 + 8) / 16
+    assert counted_full["per_token"] - counted_windowed["per_token"] == pytest.approx(expected)
+
+
+def test_checkpointing_uses_the_model_own_switch():
+    model = tiny_llama()
+    enable_checkpointing(model)
+    assert model.is_gradient_checkpointing
+
+    class Diffusers(torch.nn.Module):
+        def enable_gradient_checkpointing(self, gradient_checkpointing_func=None):
+            self.func = gradient_checkpointing_func
+
+    diffusers = Diffusers()
+    enable_checkpointing(diffusers, preserve_rng_state=False)
+    assert diffusers.func.keywords == {"use_reentrant": False, "preserve_rng_state": False}
+    with pytest.raises(NotImplementedError, match="checkpointing_fn"):
+        enable_checkpointing(torch.nn.Linear(1, 1))
+
+
+@torch.library.custom_op("benchmark_test::matmul", mutates_args=())
+def _custom_matmul(x: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
+    return x @ w
+
+
+@_custom_matmul.register_fake
+def _(x, w):
+    return x.new_empty(x.shape[0], w.shape[1])
+
+
+_custom_matmul.register_autograd(
+    lambda ctx, grad: (grad @ ctx.w.t(), ctx.x.t() @ grad),
+    setup_context=lambda ctx, inputs, output: setattr(ctx, "x", inputs[0]) or setattr(ctx, "w", inputs[1]),
+)
+
+
+class CustomModel(torch.nn.Module):
+    """A model whose only matmul in the forward is a custom operator, which the counter cannot see by itself."""
+
+    def __init__(self):
+        super().__init__()
+        self.weight = torch.nn.Parameter(torch.empty(8, 4))
+
+    def forward(self, x):
+        return _custom_matmul(x, self.weight)
+
+
+def _custom_spec(**kwargs):
+    return BenchmarkSpec(
+        models={"tiny": CustomModel},
+        batch_fn=lambda model, micro_batch, seq_len, generator: {"x": torch.randn(seq_len, 8, generator=generator)},
+        tokens_fn=lambda batch: batch["x"].shape[0],
+        loss_fn=lambda model, batch: model(**batch).sum(),
+        **kwargs,
+    )
+
+
+def test_custom_operators_count_through_their_formulas():
+    def matmul_flops(x_shape, w_shape, *args, out_shape=None, **kwargs):
+        return 2 * x_shape[0] * x_shape[1] * w_shape[1]
+
+    unseen = counted_flops_per_token(_custom_spec(), "tiny", seq_len=16, micro_batch=1)
+    seen = counted_flops_per_token(
+        _custom_spec(flop_formulas={torch.ops.benchmark_test.matmul: matmul_flops}), "tiny", seq_len=16, micro_batch=1
+    )
+    # the forward product, 2 · 16 · 8 · 4, per token of 16
+    assert seen - unseen == 2 * 8 * 4
 
 
 def test_peak_lookup():

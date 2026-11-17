@@ -6,7 +6,9 @@ model_zoo imports this module, so it must not import ColossalAI. An implementati
 measured.
 """
 
+import inspect
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Any, Callable, Dict, Mapping, Optional, Tuple
 
 import torch
@@ -26,8 +28,30 @@ def count_input_ids(batch: Dict[str, Tensor]) -> int:
     return batch["input_ids"].numel()
 
 
-def model_loss(output: Any) -> Tensor:
-    return output.loss
+def model_loss(model: nn.Module, batch: Dict[str, Any]) -> Tensor:
+    """``model(**batch).loss``: a HuggingFace model given its labels computes its own loss."""
+    return model(**batch).loss
+
+
+def enable_checkpointing(model: nn.Module, preserve_rng_state: bool = True) -> None:
+    """Non-reentrant gradient checkpointing through the model's own switch: ``gradient_checkpointing_enable`` of a
+    transformers model, ``enable_gradient_checkpointing`` of a diffusers model. A model with neither (e.g. remote code
+    with its own switch) declares ``BenchmarkSpec.checkpointing_fn``."""
+    kwargs = {"use_reentrant": False, "preserve_rng_state": preserve_rng_state}
+    if hasattr(model, "gradient_checkpointing_enable"):
+        model.gradient_checkpointing_enable(gradient_checkpointing_kwargs=kwargs)
+    elif hasattr(model, "enable_gradient_checkpointing"):
+        if "gradient_checkpointing_func" in inspect.signature(model.enable_gradient_checkpointing).parameters:
+            from torch.utils.checkpoint import checkpoint
+
+            model.enable_gradient_checkpointing(gradient_checkpointing_func=partial(checkpoint, **kwargs))
+        else:
+            model.enable_gradient_checkpointing()
+    else:
+        raise NotImplementedError(
+            f"{type(model).__name__} has no gradient_checkpointing_enable or enable_gradient_checkpointing; declare "
+            "BenchmarkSpec.checkpointing_fn"
+        )
 
 
 @dataclass(frozen=True)
@@ -47,14 +71,21 @@ class BenchmarkSpec:
             CPU. Defaults to random token ids with themselves as labels (``causal_lm_batch``).
         tokens_fn: ``tokens_fn(batch)`` is the number of tokens a batch contributes to throughput. Defaults to the
             number of input ids; a diffusion model counts latent tokens.
-        loss_fn: ``loss_fn(output)`` is the scalar the step backpropagates. Defaults to ``output.loss``.
+        loss_fn: ``loss_fn(model, batch)`` runs the forward and returns the scalar the step backpropagates, so a loss
+            that needs more than the model's output (a diffusion target, a mask) takes it from the batch. Defaults to
+            ``model(**batch).loss``.
         prepare_fn: Called on every freshly built model, after its implementation is applied, e.g. to freeze a tower.
             It may modify the module in place and return ``None``, or return a replacement.
-        causal_attention: The model's self-attention is causal, so half of its score matrix is masked and not
-            computed; counted FLOPs halve it (``metrics.compute.AttentionCounter``). True for decoder language models.
+        checkpointing_fn: ``checkpointing_fn(model, preserve_rng_state)`` turns on non-reentrant gradient
+            checkpointing. Defaults to the model's own switch (``enable_checkpointing``).
         flops_fn: ``flops_fn(model, seq_len)`` is the model FLOPs per token from a closed formula, given the model built
-            on the meta device, e.g. ``metrics.compute.decoder_flops_per_token``. Without one, MFU uses the counted
-            FLOPs; with one, both are reported and checked against each other.
+            on the meta device, e.g. ``metrics.compute.decoder_flops_per_token``. Required for an L4 report: MFU uses
+            it, and the automatic count only checks it. Without one, MFU comes from the count and is flagged as not
+            verified.
+        flop_formulas: FLOPs of custom operators the automatic count cannot see otherwise, as
+            ``torch.utils.flop_counter.FlopCounterMode``'s ``custom_mapping``: an operator (e.g.
+            ``torch.ops.mylib.fused_attention``) to ``fn(*args, out_val=..., **kwargs)`` returning its FLOPs. For
+            kernels registered as torch custom operators with a fake (meta) implementation.
         implementations: Other ways to compute the same model, by name, e.g. ``{"fused": use_fused_kernels}``. Each
             function takes the model as built (the ``"default"`` implementation) and swaps its modules, in place
             (returning ``None``) or by returning a replacement. Implementations compute the same FLOPs, so they share
@@ -62,6 +93,9 @@ class BenchmarkSpec:
         reference_implementation: The implementation whose FLOPs are counted. Counting runs the model on the meta
             device, which fused kernels (flash attention, a Triton kernel) and communicating layers (expert
             parallelism) cannot; the reference must be one that can, usually the plain PyTorch one.
+        shardformer_policy: ``shardformer_policy()`` returns the shardformer ``Policy`` that a plugin applying one
+            (HybridParallelPlugin) uses for this model; without it, the plugin picks ColossalAI's policy for the model
+            class, if it has one.
     """
 
     models: Mapping[str, Callable[[], nn.Module]]
@@ -69,12 +103,14 @@ class BenchmarkSpec:
     micro_batch: int = 1
     batch_fn: Callable[[nn.Module, int, int, torch.Generator], Dict[str, Any]] = causal_lm_batch
     tokens_fn: Callable[[Dict[str, Any]], int] = count_input_ids
-    loss_fn: Callable[[Any], Tensor] = model_loss
+    loss_fn: Callable[[nn.Module, Dict[str, Any]], Tensor] = model_loss
     prepare_fn: Optional[Callable[[nn.Module], Optional[nn.Module]]] = None
-    causal_attention: bool = False
+    checkpointing_fn: Callable[[nn.Module, bool], None] = enable_checkpointing
     flops_fn: Optional[Callable[[nn.Module, int], float]] = None
+    flop_formulas: Mapping[Any, Callable[..., int]] = field(default_factory=dict)
     implementations: Mapping[str, Callable[[nn.Module], Optional[nn.Module]]] = field(default_factory=dict)
     reference_implementation: str = DEFAULT_IMPLEMENTATION
+    shardformer_policy: Optional[Callable[[], Any]] = None
 
     def __post_init__(self):
         if not self.models:

@@ -11,7 +11,7 @@ from tests.kit.benchmark.config.plugins import CONFIGS, transformer_blocks
 from tests.kit.benchmark.config.setup import Setup
 from tests.kit.benchmark.metrics.summary import comparison, summarize
 from tests.kit.benchmark.scenarios.compare import run_compare
-from tests.kit.benchmark.scenarios.report import build_report, render_markdown
+from tests.kit.benchmark.scenarios.report import against, build_report, render_markdown
 from tests.kit.benchmark.scenarios.single import run_single
 from tests.test_benchmark.test_benchmark_core import FLOPS, PEAK, TINY, record, tiny_llama
 
@@ -29,9 +29,11 @@ def test_baseline_config_has_no_plugin():
     assert config.plugin_fn is None and config.wrap_fn is not None and config.dtype == "bf16"
 
 
-def _measurement(config, step_time, reserved):
+def _measurement(config, step_time, reserved, device=None):
     setup = asdict(Setup(entry="e", size="s", config=config, seq_len=16, micro_batch=2))
     run = record([step_time], setup=setup, memory={"reserved_peak": reserved})
+    if device is not None:
+        run["environment"] = {"accelerator": "x", "device_name": device}
     flops = dict(FLOPS, analytic=1e9, counted=1e9, counted_implementation="default")
     peak = dict(PEAK, nominal_source="vendor", measured_source="matmuls")
     return {"setup": setup, "flops": flops, "peak": peak, "summary": summarize([run], flops, peak), "runs": [run]}
@@ -72,3 +74,24 @@ def test_cpu_comparison_of_two_implementations(monkeypatch):
     assert compared["ratios"]["throughput_ratio"] > 0
     markdown = render_markdown(build_report(ours, {}, [], comparison=compared))
     assert "differ only in `implementation`" in markdown and "| unchanged |" in markdown
+
+
+def test_two_machines_compare_through_their_reports():
+    h20 = build_report(_measurement("zero2_bf16", 1.0, 40 << 30, device="NVIDIA H20"), {"commit": "a" * 40}, ["cmd"])
+    npu = build_report(_measurement("zero2_bf16", 2.0, 30 << 30, device="Ascend910B2"), {"commit": "a" * 40}, ["cmd"])
+    both = against(h20, npu)
+    assert both["comparison"]["ratios"]["throughput_ratio"] == pytest.approx(2.0)
+    markdown = render_markdown(both)
+    assert (
+        "differ only in `machine`" in markdown
+        and "NVIDIA H20 trains at 2.00× the throughput of Ascend910B2" in markdown
+    )
+    assert "MFU of the measured peak" in markdown and "different commits" not in markdown
+    later = build_report(_measurement("zero2_bf16", 2.0, 30 << 30, device="Ascend910B2"), {"commit": "b" * 40}, [])
+    assert "different commits" in render_markdown(against(h20, later))
+
+    other = build_report(_measurement("gemini_bf16", 2.0, 1, device="Ascend910B2"), {}, [])
+    with pytest.raises(ValueError, match="differing in \\['config'\\]"):
+        against(h20, other)
+    with pytest.raises(ValueError, match="already has a comparison"):
+        against(both, npu)

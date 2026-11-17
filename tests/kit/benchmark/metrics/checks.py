@@ -2,7 +2,7 @@
 
 from typing import Any, Dict, List
 
-from .compute import FLOPS_MISMATCH_LIMIT
+from .compute import COUNTED, FLOPS_MISMATCH_LIMIT
 from .memory import GiB
 
 # two repeats of the same setup whose median step times differ by more than this are flagged: the machine was not
@@ -40,6 +40,17 @@ def flags(summary: Dict[str, Any], flops: Dict[str, Any]) -> List[str]:
     if flops["difference"] is not None and abs(flops["difference"]) > FLOPS_MISMATCH_LIMIT:
         found.append(
             f"the FLOPs formula and the counted FLOPs differ by {flops['difference']:+.1%} (limit "
-            f"{FLOPS_MISMATCH_LIMIT:.0%}): one of them does not describe the model, MFU is not reliable"
+            f"{FLOPS_MISMATCH_LIMIT:.0%}): check the formula; if it is right, the count misses something, open an "
+            "issue and cite it here. Not a final L4 report until resolved"
+        )
+    if flops["source"] == COUNTED:
+        found.append(
+            "no FLOPs formula: MFU comes from the automatic count alone and is not verified; an L4 report needs the "
+            "model line's formula"
+        )
+    if flops.get("unseen_masks"):
+        found.append(
+            f"the count could not see the masks of {flops['unseen_masks']} attention calls and counted them whole"
+            + ("; MFU follows the formula" if flops["source"] != COUNTED else ", so MFU may be overstated")
         )
     return found

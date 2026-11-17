@@ -97,7 +97,6 @@ if HAS_LLAMA:
     benchmark = BenchmarkSpec(
         models={size: llama3(size) for size in LLAMA3_SIZES},
         seq_len=4096,
-        causal_attention=True,
         flops_fn=decoder_flops_per_token,
     )
 

@@ -134,7 +134,6 @@ if HAS_QWEN3:
     benchmark = BenchmarkSpec(
         models={size: qwen3(size) for size in QWEN3_SIZES},
         seq_len=4096,
-        causal_attention=True,
         flops_fn=decoder_flops_per_token,
     )
 

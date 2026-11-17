@@ -37,15 +37,17 @@ processes, and writes `llama-1b.json` and the rendered `llama-1b.md`. On H20 the
 ```
 
 Options: `--devices N` (one process per device), `--seq-len`, `--micro-batch` (per device), `--gradient-checkpointing`,
-`--implementation` (one the entry declares), `--warmup-steps`, `--timed-steps`, `--repeats`. `--config` is one of:
+`--implementation` (one the entry declares), `--optimizer` (one of `config/optimizers.py`, default `adamw`),
+`--warmup-steps`, `--timed-steps`, `--repeats`. `--config` is one of:
 
 | Config | Plugin |
 | --- | --- |
 | `ddp_fp32`, `ddp_fp16` | `TorchDDPPlugin`, without or with `mixed_precision="fp16"` |
 | `zero1_bf16`, `zero2_bf16` | `LowLevelZeroPlugin(stage=1 or 2, precision="bf16")` |
-| `zero2_bf16_offload` | the same with `cpu_offload=True` |
+| `zero1_bf16_offload`, `zero2_bf16_offload` | the same with `cpu_offload=True` |
 | `gemini_bf16` | `GeminiPlugin(precision="bf16")` |
 | `fsdp_fp32`, `fsdp_bf16` | `TorchFSDPPlugin`, without or with bf16 `MixedPrecision` |
+| `hybrid_zero2_bf16` | `HybridParallelPlugin(tp_size=1, pp_size=1, zero_stage=2, precision="bf16")`: data parallel only, with the model's shardformer policy applied (the entry's `shardformer_policy`, else ColossalAI's for the model class) |
 | `pytorch_fsdp2_bf16` | no ColossalAI: the built-in baseline (see "Comparison" below) |
 
 The names are those of the numerical alignment tool (`tests/kit/numerics/acceptance.py`), so a model's alignment and
@@ -84,6 +86,13 @@ Render a JSON report again, e.g. after collecting it from another machine:
 python -m tests.kit.benchmark.scenarios.report llama-1b.json > llama-1b.md
 ```
 
+Compare the same setup measured on two machines (e.g. H20 and Ascend 910B2), which no single run can do; the two
+reports must measure the same setup, and a different commit is flagged:
+
+```bash
+python -m tests.kit.benchmark.scenarios.report h20.json --against 910b2.json --out h20-vs-910b2.json
+```
+
 Run on idle devices. Other processes slow the steps down and count towards the device-side memory; the report records
 how much device memory was in use when the run started (this process's own context included, a few hundred MiB on
 CUDA), and flags the run when that exceeds 10% of a device. A process that starts on the devices mid-run is not caught
@@ -106,9 +115,13 @@ benchmark = BenchmarkSpec(
 model_zoo.register(..., model_attribute=ModelAttribute(benchmark=benchmark))
 ```
 
-For a causal language model that is all. Other models also give `batch_fn` (one synthetic batch for `model(**batch)`),
-`tokens_fn` (the tokens a batch counts for throughput, e.g. latent tokens of a diffusion model) and `loss_fn`; see
-`config/model.py`. Weights are random: throughput and memory of a dense model do not depend on them.
+For a causal language model that is all. Other models also give `batch_fn` (one synthetic batch of fixed shape; it may
+take real samples from a dataset, cut or packed to the length), `tokens_fn` (the tokens a batch counts for throughput,
+e.g. latent tokens of a diffusion model) and `loss_fn(model, batch)` (the forward and the loss, so that a loss can use
+more of the batch than the model's inputs, e.g. a diffusion target); see `config/model.py`. Gradient checkpointing uses
+the model's own switch (`gradient_checkpointing_enable` of transformers, `enable_gradient_checkpointing` of diffusers);
+a model with another one gives `checkpointing_fn`. A model measured under `hybrid_zero2_bf16` that ColossalAI has no
+shardformer policy for gives `shardformer_policy`. Weights are random: throughput and memory of a dense model do not depend on them.
 
 A model that gets an L4 report gives a FLOPs formula as `flops_fn(model, seq_len)`, in its own model_zoo file next to
 the `BenchmarkSpec`: the line knows its layers best (e.g. Gated DeltaNet, a MoE router), and MFU uses the formula.
@@ -229,9 +242,13 @@ FLOPs per token come from two independent sources (`metrics/compute.py`), and an
 
 - the entry's `flops_fn`, a closed formula from the config;
 - `FlopCounterMode` over one forward and backward of the real-size model, in its reference implementation, built on
-  the meta device (as fake tensors: no memory, a second or two even for 8B). Calls to `scaled_dot_product_attention` are counted from their shapes,
-  halved for a model declared `causal_attention=True` (the counter cannot see a mask's values on the meta device);
-  attention written as plain matmuls (`attn_implementation="eager"`) is counted whole, as it is computed whole.
+  the meta device (as fake tensors: no memory, a second or two even for 8B). Attention is counted from its shapes:
+  transformers' `"sdpa"` attention is replaced while counting, and each call is halved when its module is causal and
+  limited to the window when the module has a `sliding_window`, as transformers itself decides. A direct
+  `scaled_dot_product_attention` call is halved only with `is_causal=True`; one with a mask tensor is counted whole
+  and the report says how many there were (the mask's values are not known on the meta device). Attention written as
+  plain matmuls (`attn_implementation="eager"`) is counted whole, as it is computed whole. Custom operators (a fused
+  kernel registered with `torch.library`) count through the entry's `flop_formulas`.
 
 They differ by less than 1e-6 for every declared Llama and Qwen3 size (the counter also sees the rotary embedding's
 frequency product); a difference above 5% is flagged, as one of them then does not describe the model.
@@ -259,6 +276,7 @@ tests/kit/benchmark/
 ├── config/             layer 1
 │   ├── model.py        BenchmarkSpec: a model_zoo entry's real sizes, implementations and how to feed it
 │   ├── plugins.py      the plugin configurations, and plain-PyTorch FSDP2, the built-in baseline
+│   ├── optimizers.py   the optimizers, by name
 │   └── setup.py        Setup: one measurement's conditions
 ├── runner/             layer 2
 │   ├── measure.py      one run in fresh processes: build, boost (or wrap), time, memory; out-of-memory recorded

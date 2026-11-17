@@ -34,7 +34,7 @@ class Limited(nn.Module):
         return self.inner(input_ids=input_ids, labels=labels)
 
 
-LIMITED = BenchmarkSpec(models={"tiny": Limited}, seq_len=32, micro_batch=1, causal_attention=True)
+LIMITED = BenchmarkSpec(models={"tiny": Limited}, seq_len=32, micro_batch=1)
 
 
 def _setup(**kwargs):

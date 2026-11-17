@@ -1,6 +1,10 @@
 """Report: the JSON a scenario writes, and the one Markdown template every model line uses.
 
     python -m tests.kit.benchmark.scenarios.report result.json > result.md
+    python -m tests.kit.benchmark.scenarios.report h20.json --against 910b2.json --out h20-vs-910b2.json
+
+``--against`` compares two reports of the same setup measured on different machines (e.g. H20 and Ascend 910B2),
+which no single run can do.
 
 The JSON keeps every raw run (every timed step of every rank), so any metric can be recomputed later. The Markdown is
 rendered from the JSON and nothing else, and computes nothing: every number in it comes from ``metrics``.
@@ -13,10 +17,13 @@ from typing import Any, Dict, List, Optional
 
 from ..config.model import DEFAULT_IMPLEMENTATION
 from ..metrics.memory import GiB
+from ..metrics.summary import comparison as comparison_ratios
 
 SCHEMA_VERSION = 3
 SINGLE, SEARCH, SCALING = "single", "search", "scaling"
 COMPARISON = "comparison"
+# the field a comparison of two machines differs in
+MACHINE = "machine"
 
 
 def build_report(
@@ -47,6 +54,37 @@ def build_report(
     if comparison is not None:
         report[COMPARISON] = comparison
     return report
+
+
+def against(ours: Dict[str, Any], theirs: Dict[str, Any]) -> Dict[str, Any]:
+    """``ours`` with a comparison against ``theirs``: two reports of the same setup measured on different machines.
+    Only the machine (and the profiled steps, which are not part of a measurement) may differ."""
+    for report in (ours, theirs):
+        if report.get("schema_version") != SCHEMA_VERSION:
+            raise ValueError(f"schema version {report.get('schema_version')} is not {SCHEMA_VERSION}")
+    if COMPARISON in ours:
+        raise ValueError("this report already has a comparison")
+    a, b = ours["measurement"]["setup"], theirs["measurement"]["setup"]
+    differ = sorted(k for k in a.keys() | b.keys() if k != "profile_steps" and a.get(k) != b.get(k))
+    if differ:
+        raise ValueError(f"the two reports measure different setups, differing in {differ}")
+    return {
+        **ours,
+        COMPARISON: {
+            "field": MACHINE,
+            "ours": _machine(ours),
+            "theirs": _machine(theirs),
+            "measurement": theirs["measurement"],
+            "ratios": comparison_ratios(ours["measurement"]["summary"], theirs["measurement"]["summary"]),
+            "environment": theirs["environment"],
+            "repository": theirs["repository"],
+        },
+    }
+
+
+def _machine(report: Dict[str, Any]) -> str:
+    env = report["environment"]
+    return env.get("device_name", env.get("accelerator", "?"))
 
 
 # metrics a report does not cover unless its scenario does, listed so that a missing number is never read as zero
@@ -151,7 +189,7 @@ def render_markdown(report: Dict[str, Any]) -> str:
         "",
         *_search_section(search),
         *_scaling_section(report.get("scaling"), setup["profile_steps"]),
-        *_comparison_section(report.get(COMPARISON), summary),
+        *_comparison_section(report.get(COMPARISON), summary, repo),
         "## Environment and reproduction",
         "",
         "| Item | Value |",
@@ -168,7 +206,9 @@ def render_markdown(report: Dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _comparison_section(comparison: Optional[Dict[str, Any]], ours: Dict[str, Any]) -> List[str]:
+def _comparison_section(
+    comparison: Optional[Dict[str, Any]], ours: Dict[str, Any], repository: Dict[str, Any]
+) -> List[str]:
     lines = ["## Comparison", ""]
     if comparison is None:
         return lines + ["Not compared by this report.", ""]
@@ -181,19 +221,26 @@ def _comparison_section(comparison: Optional[Dict[str, Any]], ours: Dict[str, An
         f"{comparison['theirs']}"
         + (f" with {reserved:.2f}× its peak reserved memory." if reserved is not None else "."),
         "",
-        f"| {field} | Tokens/s per device | MFU | Step time | Forward + backward | Peak reserved | Optimizer | "
-        "Repeat spread |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+        f"| {field} | Tokens/s per device | MFU | MFU of the measured peak | Step time | Forward + backward | "
+        "Peak reserved | Optimizer | Repeat spread |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for value, summary in ((comparison["ours"], ours), (comparison["theirs"], theirs)):
         time = summary["time"]
         lines.append(
             f"| {value} | {_tokens(time['tokens_per_s_per_device'])} | "
-            f"{_percent(summary['utilization']['mfu_nominal'])} | {_ms(time['step_time_s']['median'])} | "
+            f"{_percent(summary['utilization']['mfu_nominal'])} | "
+            f"{_percent(summary['utilization']['mfu_measured'])} | {_ms(time['step_time_s']['median'])} | "
             f"{time['forward_backward_share']:.1%} | {_gib(summary['memory_bytes'].get('reserved_peak'))} | "
             f"{summary['optimizer']} | {summary['repeat_spread']:.1%} |"
         )
     flagged = [f"{comparison['theirs']}: {flag}" for flag in theirs["flags"]]
+    other = comparison.get("repository")
+    if other is not None and other.get("commit") != repository.get("commit"):
+        flagged.append(
+            f"the two measurements ran different commits ({repository.get('commit', 'unknown')[:8]} and "
+            f"{other.get('commit', 'unknown')[:8]}): the difference is not only the machine"
+        )
     return lines + [""] + [f"> **Warning:** {flag}" for flag in flagged] + ([""] if flagged else [])
 
 
@@ -280,11 +327,19 @@ def _gib(value: Optional[int]) -> str:
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Render a benchmark JSON report as Markdown.")
     parser.add_argument("report", help="JSON written by python -m tests.kit.benchmark.run")
+    parser.add_argument("--against", help="another report of the same setup, measured on another machine")
+    parser.add_argument("--out", help="with --against: write the combined JSON report here")
     args = parser.parse_args(argv)
     with open(args.report) as f:
         report = json.load(f)
     if report.get("schema_version") != SCHEMA_VERSION:
         raise SystemExit(f"schema version {report.get('schema_version')} is not {SCHEMA_VERSION}")
+    if args.against:
+        with open(args.against) as f:
+            report = against(report, json.load(f))
+        if args.out:
+            with open(args.out, "w") as f:
+                json.dump(report, f, indent=2)
     sys.stdout.write(render_markdown(report))
     return 0
 

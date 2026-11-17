@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional
 from tests.kit.numerics.trace import repository_state
 
 from .config.model import DEFAULT_IMPLEMENTATION, spec_of
+from .config.optimizers import OPTIMIZERS
 from .config.plugins import CONFIGS
 from .config.setup import Setup, parse_field
 from .scenarios import report
@@ -52,6 +53,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "built",
     )
     parser.add_argument("--config", required=True, choices=sorted(CONFIGS))
+    parser.add_argument("--optimizer", default=defaults["optimizer"], choices=sorted(OPTIMIZERS))
     parser.add_argument("--devices", type=int, default=defaults["devices"], help="one process per device")
     parser.add_argument("--seq-len", type=int, help="defaults to the entry's BenchmarkSpec.seq_len")
     parser.add_argument("--micro-batch", type=int, help="per device; defaults to the entry's BenchmarkSpec")
@@ -106,6 +108,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         micro_batch=micro_batch,
         devices=args.devices,
         implementation=args.implementation,
+        optimizer=args.optimizer,
         gradient_checkpointing=args.gradient_checkpointing,
         warmup_steps=args.warmup_steps,
         timed_steps=args.timed_steps,
