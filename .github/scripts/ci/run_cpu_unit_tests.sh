@@ -41,7 +41,8 @@ fi
 
 export CUDA_VISIBLE_DEVICES=""
 export FAST_TEST="${FAST_MODE:-1}"
-export PYTHONPATH="${REPO}${PYTHONPATH:+:${PYTHONPATH}}"
+export PYTHONPATH="${SCRIPT_DIR}/cpu_tracebacks:${REPO}${PYTHONPATH:+:${PYTHONPATH}}"
+export COLOSSAL_CI_TRACEBACK_DIR="${RESULTS_ROOT}/tracebacks"
 
 mkdir -p "${RESULTS_ROOT}"
 cd "${REPO}"
