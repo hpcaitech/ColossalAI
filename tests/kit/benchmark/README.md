@@ -118,8 +118,9 @@ it is verified against formulas only for standard decoders. Every measurement ch
 flags a difference above 5%; `tests/test_benchmark/test_benchmark_device.py` checks every declared formula at its real
 sizes in CI. On a difference, check the formula first. If it is right, open a GitHub issue with the model and both
 numbers: either the counter has a gap that can be fixed (an attention it reads wrongly, a custom kernel with no
-registered FLOPs), or the model cannot be counted on the meta device at all (routing that depends on values), in which
-case the formula is reviewed by the benchmark owners. Until then the report's warning cites the issue; a report with an
+registered FLOPs), or the model cannot be counted on the meta device (routing that depends on values). Such a model is
+counted instead in one extra, untimed step on the devices at the end of its measurement, with its real weights
+(planned with MoE support); only what neither count can see is checked by hand by the benchmark owners. Until then the report's warning cites the issue; a report with an
 unresolved warning is not a final L4 report.
 Without a formula, MFU comes from the count alone and is not verified. A formula follows these conventions, so that
 MFU compares across lines:
@@ -129,7 +130,10 @@ MFU compares across lines:
 - not the forward that gradient checkpointing recomputes (that is HFU, counted separately);
 - causal attention halved (its score matrix and the product with the values), non-causal attention whole;
 - element-wise operations, norms and softmax left out;
-- a MoE layer counts the experts each token is routed to, not all of them.
+- a MoE layer counts the experts each token is routed to, not all of them. Which experts changes from step to step,
+  but each token always goes through its top-k, so the FLOPs per token do not; an implementation that drops tokens
+  over an expert's capacity, or pads to it, is written as if every token went through its top-k, and the report says
+  what was dropped or padded.
 
 Build on `decoder_flops_per_token` (Llama-, Qwen3- and Mistral-style decoders) for the standard attention and MLP and
 add what is specific to the model. Where the count cannot run (a router whose dispatch depends on the values, a layer
