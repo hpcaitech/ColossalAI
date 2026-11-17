@@ -111,6 +111,9 @@ def _run(
         )
         if rank == 0:
             trace.save(path)
+        # Finish all work on every rank before tearing down the shared transport.
+        # Keep this out of finally: a failing peer may never reach a collective.
+        dist.barrier()
     finally:
         # Each spawned worker owns its group; release it before interpreter shutdown, even on errors.
         if dist.is_initialized():

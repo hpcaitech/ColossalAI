@@ -248,6 +248,15 @@ def test_worker_releases_process_group(scenario, failure, tmp_path, monkeypatch)
     """Workers release real process groups after success or an error, preserving the original error."""
     assert not dist.is_initialized()
     path = tmp_path / "trace.safetensors"
+    barriers = []
+    real_barrier = dist.barrier
+
+    def barrier(*args, **kwargs):
+        assert path.exists(), "rank zero must finish saving before the final synchronization"
+        barriers.append(True)
+        return real_barrier(*args, **kwargs)
+
+    monkeypatch.setattr(dist, "barrier", barrier)
     kwargs = dict(
         rank=0,
         world_size=1,
@@ -281,6 +290,7 @@ def test_worker_releases_process_group(scenario, failure, tmp_path, monkeypatch)
         with pytest.raises(RuntimeError, match=f"injected {failure} failure") if failure else nullcontext():
             scenario._run(**kwargs)
         assert not dist.is_initialized(), "the worker leaked its process group"
+        assert len(barriers) == (1 if failure is None else 0), "failed workers must not wait for peers"
         if failure is None:
             assert scenario.Trace.load(str(path)), "the worker must still save its training trace"
     finally:
