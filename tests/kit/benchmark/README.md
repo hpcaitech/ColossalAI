@@ -115,8 +115,12 @@ the `BenchmarkSpec`: the line knows its layers best (e.g. Gated DeltaNet, a MoE 
 FLOPs are also counted automatically (see MFU below), but only as a check: the count sees the matmuls the reference
 implementation runs, not custom kernels, routing that depends on values, or which positions a mask tensor hides, and
 it is verified against formulas only for standard decoders. Every measurement checks the formula against the count and
-flags a difference above 5%, which the line then explains in its report (a wrong formula, or something the count
-cannot see); `tests/test_benchmark/test_benchmark_device.py` checks every declared formula at its real sizes in CI.
+flags a difference above 5%; `tests/test_benchmark/test_benchmark_device.py` checks every declared formula at its real
+sizes in CI. On a difference, check the formula first. If it is right, open a GitHub issue with the model and both
+numbers: either the counter has a gap that can be fixed (an attention it reads wrongly, a custom kernel with no
+registered FLOPs), or the model cannot be counted on the meta device at all (routing that depends on values), in which
+case the formula is reviewed by the benchmark owners. Until then the report's warning cites the issue; a report with an
+unresolved warning is not a final L4 report.
 Without a formula, MFU comes from the count alone and is not verified. A formula follows these conventions, so that
 MFU compares across lines:
 
