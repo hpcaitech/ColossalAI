@@ -25,10 +25,10 @@ micro-batch, scaling the device count, a comparison any one field (the plugin, t
 
 ```bash
 python -m tests.kit.benchmark.run --entry transformers_llama_for_causal_lm --size 1b --config zero2_bf16 \
-    --micro-batch 2 --out llama-1b.json
+    --micro-batch 2 --weights random --out llama-1b.json
 ```
 
-This trains Llama-3.2-1B (randomly initialized, real size) for 5 warmup and 20 timed steps, twice, each time in fresh
+This trains Llama-3.2-1B (randomly initialized, real size: its published weights are gated and not cached) for 5 warmup and 20 timed steps, twice, each time in fresh
 processes, and writes `llama-1b.json` and the rendered `llama-1b.md`. On H20 the summary line reads:
 
 ```
@@ -38,6 +38,7 @@ processes, and writes `llama-1b.json` and the rendered `llama-1b.md`. On H20 the
 
 Options: `--devices N` (one process per device), `--seq-len`, `--micro-batch` (per device), `--gradient-checkpointing`,
 `--implementation` (one the entry declares), `--optimizer` (one of `config/optimizers.py`, default `adamw`),
+`--weights` (`pretrained`, the default, or `random`),
 `--warmup-steps`, `--timed-steps`, `--repeats`. `--config` is one of:
 
 | Config | Plugin |
@@ -103,17 +104,25 @@ by this; for data-parallel scaling on a shared machine, check `nvidia-smi` befor
 Declare the real sizes on the model_zoo entry, next to its reduced test config:
 
 ```python
-from tests.kit.benchmark import BenchmarkSpec
+from tests.kit.benchmark import BenchmarkSpec, HFModel
 
 benchmark = BenchmarkSpec(
     models={
-        "1b": lambda: transformers.LlamaForCausalLM(LlamaConfig(...)),  # from the published config.json
-        "8b": lambda: transformers.LlamaForCausalLM(LlamaConfig(...)),
+        # the published model, pinned to a revision; its configuration is read from the repository
+        "1.7b": HFModel("Qwen/Qwen3-1.7B", "70d244cc86ccca08cf5af4e1e306ecf908b1ad5e", "transformers.Qwen3ForCausalLM"),
     },
     seq_len=4096,
 )
 model_zoo.register(..., model_attribute=ModelAttribute(benchmark=benchmark))
 ```
+
+Measurements load the published weights by default (`--weights pretrained`): anything whose speed depends on values,
+like a MoE router's balance, is then as in training. Code names the repository and its revision, never a path: the files
+are found through the HuggingFace variables, on our machines the shared offline cache (`source
+/mnt/beegfs/ColossalAI/shared-cache/env.sh`), elsewhere the Hub. `HFModel(config=...)` writes the configuration out, so
+that random weights need no download (the Qwen3 entry does this: its published weights are not in the shared cache, so it is measured with `--weights random` there); `subfolder` picks a diffusers pipeline's component;
+`trust_remote_code` runs a repository's own modeling code. A size given as a plain function has random weights only
+(`--weights random`), like the gated Llama 3.
 
 For a causal language model that is all. Other models also give `batch_fn` (one synthetic batch of fixed shape; it may
 take real samples from a dataset, cut or packed to the length), `tokens_fn` (the tokens a batch counts for throughput,
@@ -121,7 +130,15 @@ e.g. latent tokens of a diffusion model) and `loss_fn(model, batch)` (the forwar
 more of the batch than the model's inputs, e.g. a diffusion target); see `config/model.py`. Gradient checkpointing uses
 the model's own switch (`gradient_checkpointing_enable` of transformers, `enable_gradient_checkpointing` of diffusers);
 a model with another one gives `checkpointing_fn`. A model measured under `hybrid_zero2_bf16` that ColossalAI has no
-shardformer policy for gives `shardformer_policy`. Weights are random: throughput and memory of a dense model do not depend on them.
+shardformer policy for gives `shardformer_policy`. `config/data.py` has `PackedText` (real text from a Hub dataset,
+tokenized and packed to the fixed shape: a MoE router needs real tokens) and, for video diffusion transformers,
+`LatentVideo`, `LatentTokens` and `flow_matching_loss`; a model whose sequence is set by its frames and resolution
+declares `searchable=("micro_batch",)`.
+
+A model that ColossalAI's line has not added to model_zoo yet can be measured from `entries.py` (benchmark-only
+entries, looked up after model_zoo): `qwen3_moe` (Qwen3-30B-A3B) and `wan2_2_ti2v` (the Wan2.2-TI2V-5B transformer at
+480×832, 81 frames). Their specs move into model_zoo when the lines add their entries; they are kept out of it until
+then because other tests pick model_zoo entries by name substring.
 
 A model that gets an L4 report gives a FLOPs formula as `flops_fn(model, seq_len)`, in its own model_zoo file next to
 the `BenchmarkSpec`: the line knows its layers best (e.g. Gated DeltaNet, a MoE router), and MFU uses the formula.
@@ -133,7 +150,7 @@ sizes in CI. On a difference, check the formula first. If it is right, open a Gi
 numbers: either the counter has a gap that can be fixed (an attention it reads wrongly, a custom kernel with no
 registered FLOPs), or the model cannot be counted on the meta device (routing that depends on values). Such a model is
 counted instead in one extra, untimed step on the devices at the end of its measurement, with its real weights
-(planned with MoE support); only what neither count can see is checked by hand by the benchmark owners. Until then the report's warning cites the issue; a report with an
+(`BenchmarkSpec.count_on_device`); only what neither count can see is checked by hand by the benchmark owners. Until then the report's warning cites the issue; a report with an
 unresolved warning is not a final L4 report.
 Without a formula, MFU comes from the count alone and is not verified. A formula follows these conventions, so that
 MFU compares across lines:
@@ -143,7 +160,8 @@ MFU compares across lines:
 - not the forward that gradient checkpointing recomputes (that is HFU, counted separately);
 - causal attention halved (its score matrix and the product with the values), non-causal attention whole;
 - element-wise operations, norms and softmax left out;
-- a MoE layer counts the experts each token is routed to, not all of them. Which experts changes from step to step,
+- a MoE layer counts the experts each token is routed to, not all of them (`moe_decoder_flops_per_token` for
+  Qwen3-MoE-style decoders). Which experts changes from step to step,
   but each token always goes through its top-k, so the FLOPs per token do not; an implementation that drops tokens
   over an expert's capacity, or pads to it, is written as if every token went through its top-k, and the report says
   what was dropped or padded.
@@ -273,15 +291,18 @@ TFLOPS, dense; sources are in `metrics/compute.py`. All device calls go through
 ```
 tests/kit/benchmark/
 ├── run.py              command line: one scenario, its JSON report and Markdown
+├── entries.py          benchmark-only entries, for models not in model_zoo yet
 ├── config/             layer 1
 │   ├── model.py        BenchmarkSpec: a model_zoo entry's real sizes, implementations and how to feed it
 │   ├── plugins.py      the plugin configurations, and plain-PyTorch FSDP2, the built-in baseline
 │   ├── optimizers.py   the optimizers, by name
+│   ├── data.py         real-text batches; video latents and the flow-matching loss
 │   └── setup.py        Setup: one measurement's conditions
 ├── runner/             layer 2
 │   ├── measure.py      one run in fresh processes: build, boost (or wrap), time, memory; out-of-memory recorded
 │   ├── environment.py  versions, device, clock and power limits, device memory in use at the start
-│   └── timeline.py     device timeline of profiled steps: steps, communication and compute intervals
+│   ├── timeline.py     device timeline of profiled steps: steps, communication and compute intervals
+│   └── counting.py     FLOPs counting: matmuls and attention, on the meta device or in one step on the devices
 ├── metrics/            layer 3
 │   ├── time.py         step time, throughput, step split
 │   ├── compute.py      FLOPs per token (formulas and counting), peaks, MFU / HFU

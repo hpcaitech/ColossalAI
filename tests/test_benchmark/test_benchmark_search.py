@@ -7,6 +7,7 @@ from torch.multiprocessing.spawn import ProcessRaisedException
 
 from colossalai.testing import rerun_if_address_is_in_use
 from tests.kit.benchmark import BenchmarkSpec
+from tests.kit.benchmark.config.model import RANDOM
 from tests.kit.benchmark.config.setup import Setup
 from tests.kit.benchmark.runner.measure import DEVICE_OUT_OF_MEMORY, measure
 from tests.kit.benchmark.scenarios.report import build_report, render_markdown
@@ -38,7 +39,12 @@ LIMITED = BenchmarkSpec(models={"tiny": Limited}, seq_len=32, micro_batch=1)
 
 
 def _setup(**kwargs):
-    return Setup(entry="limited", size="tiny", config="ddp_fp32", **{"seq_len": 32, "micro_batch": 1, **kwargs})
+    return Setup(
+        entry="limited",
+        size="tiny",
+        config="ddp_fp32",
+        **{"seq_len": 32, "micro_batch": 1, "weights": RANDOM, **kwargs},
+    )
 
 
 class Threshold:

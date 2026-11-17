@@ -16,6 +16,7 @@ import sys
 from typing import Any, Dict, List, Optional
 
 from ..config.model import DEFAULT_IMPLEMENTATION
+from ..metrics.compute import DEVICE
 from ..metrics.memory import GiB
 from ..metrics.summary import comparison as comparison_ratios
 
@@ -131,6 +132,7 @@ def render_markdown(report: Dict[str, Any]) -> str:
         "| --- | --- |",
         f"| Entry / size | {setup['entry']} / {setup['size']} ({summary['parameters'] / 1e9:.2f} B parameters) |",
         f"| Implementation | {setup['implementation']} |",
+        f"| Weights | {setup['weights']} |",
         f"| Plugin and precision | {setup['config']} |",
         f"| Optimizer | {summary['optimizer']} |",
         f"| Devices | {devices} |",
@@ -172,7 +174,16 @@ def render_markdown(report: Dict[str, Any]) -> str:
             f"| HFU | {_utilization(utilization, 'hfu', peak)} | as MFU, with the forward that gradient checkpointing "
             "recomputes |"
         ]
-    difference = "no formula" if flops["difference"] is None else f"{flops['difference']:+.2%}"
+    if flops["counted"] is None:
+        difference = "the device count includes the recomputed forward: see hardware FLOPs"
+    elif flops["difference"] is None:
+        difference = "no formula"
+    else:
+        difference = f"{flops['difference']:+.2%} from the formula"
+    if flops.get("counted_on") == DEVICE:
+        counted_where = "on the devices, in one extra untimed step"
+    else:
+        counted_where = f"meta device, {flops['counted_implementation']} implementation"
     lines += [
         "## FLOPs and peak",
         "",
@@ -180,8 +191,7 @@ def render_markdown(report: Dict[str, Any]) -> str:
         "| --- | --- |",
         f"| Model FLOPs per token | {_gflop(flops['model_flops_per_token'])} (from the {flops['source']}) |",
         f"| Formula | {_gflop(flops['analytic'])} |",
-        f"| Counted (`FlopCounterMode`, meta device, {flops['counted_implementation']} implementation) | "
-        f"{_gflop(flops['counted'])} ({difference} from the formula) |",
+        f"| Counted (`FlopCounterMode`, {counted_where}) | {_gflop(flops['counted'])} ({difference}) |",
         f"| Hardware FLOPs per token | {_gflop(flops['hardware_flops_per_token'])} |",
         f"| Peak, nominal ({peak['device']}, {peak['dtype']}) | {_tflops(peak['nominal_tflops'])}: "
         f"{peak['nominal_source'] or 'unknown'} |",

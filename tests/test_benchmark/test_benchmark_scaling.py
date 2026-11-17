@@ -4,6 +4,7 @@ and a two-process run on the CPU."""
 import pytest
 
 from colossalai.testing import rerun_if_address_is_in_use
+from tests.kit.benchmark.config.model import RANDOM
 from tests.kit.benchmark.config.setup import Setup
 from tests.kit.benchmark.metrics.parallel import communication_metrics, communication_shares
 from tests.kit.benchmark.metrics.summary import scaling_curve, summarize
@@ -72,7 +73,14 @@ def test_efficiency_is_per_device_throughput_against_the_smallest_count():
 def test_cpu_scaling_end_to_end(monkeypatch):
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "")
     setup = Setup(
-        entry="tiny", size="tiny", config="ddp_fp32", seq_len=16, micro_batch=2, warmup_steps=1, timed_steps=2
+        entry="tiny",
+        size="tiny",
+        config="ddp_fp32",
+        seq_len=16,
+        micro_batch=2,
+        warmup_steps=1,
+        timed_steps=2,
+        weights=RANDOM,
     )
     scaling = run_scaling(setup, counts=(2, 1), repeats=1, spec=TINY)
     measurement = scaling["measurements"][-1]

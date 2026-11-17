@@ -1,7 +1,7 @@
 import torch
 import transformers
 
-from tests.kit.benchmark import BenchmarkSpec, decoder_flops_per_token
+from tests.kit.benchmark import BenchmarkSpec, HFModel, decoder_flops_per_token
 
 from ..registry import ModelAttribute, model_zoo
 
@@ -128,8 +128,16 @@ if HAS_QWEN3:
         ),
     }
 
+    # the published weights, at the commit the configurations above are from
+    QWEN3_REVISIONS = {
+        "0.6b": ("Qwen/Qwen3-0.6B", "c1899de289a04d12100db370d81485cdf75e47ca"),
+        "1.7b": ("Qwen/Qwen3-1.7B", "70d244cc86ccca08cf5af4e1e306ecf908b1ad5e"),
+        "8b": ("Qwen/Qwen3-8B", "b968826d9c46dd6066d109eabc6255188de91218"),
+    }
+
     def qwen3(size):
-        return lambda: transformers.Qwen3ForCausalLM(Qwen3Config(**QWEN3, **QWEN3_SIZES[size]))
+        repo, revision = QWEN3_REVISIONS[size]
+        return HFModel(repo, revision, "transformers.Qwen3ForCausalLM", config={**QWEN3, **QWEN3_SIZES[size]})
 
     benchmark = BenchmarkSpec(
         models={size: qwen3(size) for size in QWEN3_SIZES},

@@ -41,11 +41,12 @@ from colossalai.booster import Booster
 from colossalai.testing import spawn
 from tests.kit.numerics.capture.plugins import make_optimizer
 
-from ..config.model import BenchmarkSpec, spec_of
+from ..config.model import PRETRAINED, BenchmarkSpec, spec_of
 from ..config.optimizers import build_optimizer
 from ..config.plugins import CONFIGS
 from ..config.setup import Setup
 from . import timeline
+from .counting import count_on_device
 from .environment import device_used, environment
 
 COMPLETED = "completed"
@@ -70,6 +71,8 @@ def measure(setup: Setup, spec: Optional[BenchmarkSpec] = None) -> Dict[str, Any
     - ``losses``: every step's loss, warmup included;
     - ``memory``: bytes, peaks since the first step (allocator statistics only on a device);
     - ``timeline``: ``timeline.spans_from_trace`` of the profiled steps, or None;
+    - ``device_count``: with ``BenchmarkSpec.count_on_device``, the FLOPs per token counted in one extra step on the
+      device and the attention calls whose masks were not looked at (``counting.count_on_device``), else None;
     - ``device_used_at_start``: bytes of the device in use before the model was built, by any process."""
     with tempfile.TemporaryDirectory() as directory:
         path = os.path.join(directory, "record.json")
@@ -116,7 +119,7 @@ def _train(spec: BenchmarkSpec, setup: Setup) -> Dict[str, Any]:
     config = CONFIGS[setup.config]
     device = accelerator.get_current_device()
 
-    model = spec.build(setup.size, setup.implementation)
+    model = spec.build(setup.size, setup.implementation, pretrained=setup.weights == PRETRAINED)
     if setup.gradient_checkpointing:
         # non-reentrant: the variant HuggingFace recommends and every plugin of this tool supports
         spec.checkpointing_fn(model, True)
@@ -182,6 +185,12 @@ def _train(spec: BenchmarkSpec, setup: Setup) -> Dict[str, Any]:
     if setup.profile_steps:
         first = setup.warmup_steps + setup.timed_steps
         spans = timeline.profile(accelerator.name, lambda: [train_step(first + i) for i in range(setup.profile_steps)])
+    device_count = None
+    if spec.count_on_device:
+        # one more step, untimed and after everything else: counting slows it down
+        last = setup.warmup_steps + setup.timed_steps + setup.profile_steps
+        flops, unseen = count_on_device(lambda: train_step(last), spec.flop_formulas)
+        device_count = {"per_token": flops / tokens, "unseen_masks": unseen}
     timed = slice(setup.warmup_steps, setup.warmup_steps + setup.timed_steps)
     return {
         "parameters": parameters,
@@ -193,6 +202,7 @@ def _train(spec: BenchmarkSpec, setup: Setup) -> Dict[str, Any]:
         "losses": losses[: setup.warmup_steps + setup.timed_steps],
         "memory": memory,
         "timeline": spans,
+        "device_count": device_count,
     }
 
 

@@ -11,7 +11,7 @@ Four layers, one package each; a layer only uses the ones below it:
 Only what model_zoo entries need is imported here, and none of it pulls in ColossalAI.
 """
 
-from .config.model import BenchmarkSpec, causal_lm_batch
-from .metrics.compute import decoder_flops_per_token
+from .config.model import BenchmarkSpec, HFModel, causal_lm_batch
+from .metrics.compute import decoder_flops_per_token, moe_decoder_flops_per_token
 
-__all__ = ["BenchmarkSpec", "causal_lm_batch", "decoder_flops_per_token"]
+__all__ = ["BenchmarkSpec", "HFModel", "causal_lm_batch", "decoder_flops_per_token", "moe_decoder_flops_per_token"]

@@ -3,10 +3,12 @@ real-size model_zoo declarations."""
 
 import pytest
 import torch
+import transformers
 
 from colossalai.accelerator import get_accelerator
 from colossalai.testing import rerun_if_address_is_in_use
 from tests.kit.benchmark import BenchmarkSpec
+from tests.kit.benchmark.config.model import RANDOM, spec_of
 from tests.kit.benchmark.config.setup import Setup
 from tests.kit.benchmark.metrics.compute import counted_flops_per_token, lookup
 from tests.kit.benchmark.scenarios.compare import run_compare
@@ -38,6 +40,7 @@ def _setup(config, seq_len=16, **kwargs):
         micro_batch=2,
         warmup_steps=1,
         timed_steps=3,
+        weights=RANDOM,
         **kwargs,
     )
 
@@ -150,3 +153,31 @@ def test_fsdp2_baseline_trains_and_compares():
     memory = baseline["memory_bytes"]
     assert 0 < memory["allocated_peak"] <= memory["reserved_peak"]
     assert compared["ratios"]["throughput_ratio"] > 0
+
+
+def test_benchmark_only_entries_and_the_moe_formula():
+    from tests.kit.benchmark.entries import ENTRIES
+    from tests.kit.benchmark.metrics.compute import moe_decoder_flops_per_token
+
+    assert spec_of("qwen3_moe") is ENTRIES["qwen3_moe"] and spec_of("wan2_2_ti2v").searchable == ("micro_batch",)
+    # Qwen3-30B-A3B, from its config.json: 30.5 B parameters, 3.3 B of them active per token
+    config = transformers.Qwen3MoeConfig(
+        vocab_size=151936,
+        hidden_size=2048,
+        intermediate_size=6144,
+        moe_intermediate_size=768,
+        num_hidden_layers=48,
+        num_attention_heads=32,
+        num_key_value_heads=4,
+        head_dim=128,
+        num_experts=128,
+        num_experts_per_tok=8,
+        tie_word_embeddings=False,
+    )
+    with torch.device("meta"):
+        model = transformers.Qwen3MoeForCausalLM(config)
+    assert sum(p.numel() for p in model.parameters()) / 1e9 == pytest.approx(30.53, abs=0.01)
+    # without attention, 6 FLOPs per active weight: the published 3.3 B active parameters less the input embedding
+    # (0.31 B, a lookup) and the norms
+    active = moe_decoder_flops_per_token(model, 0) / 6
+    assert active / 1e9 == pytest.approx(3.3 - 0.31, abs=0.1)

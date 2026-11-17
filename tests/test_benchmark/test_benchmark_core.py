@@ -11,24 +11,26 @@ import transformers
 
 from colossalai.testing import rerun_if_address_is_in_use
 from tests.kit.benchmark import BenchmarkSpec, decoder_flops_per_token
-from tests.kit.benchmark.config.model import DEFAULT_IMPLEMENTATION, enable_checkpointing
+from tests.kit.benchmark.config.data import LatentTokens, LatentVideo, flow_matching_loss
+from tests.kit.benchmark.config.model import DEFAULT_IMPLEMENTATION, PRETRAINED, RANDOM, HFModel, enable_checkpointing
 from tests.kit.benchmark.config.plugins import CONFIGS
 from tests.kit.benchmark.config.setup import Setup, parse_field
 from tests.kit.benchmark.metrics.compute import (
     COUNTED,
+    DEVICE,
     PEAKS,
-    AttentionCounter,
-    attended_pairs,
     count_flops,
     counted_flops_per_token,
     flops_per_token,
     lookup,
+    moe_decoder_flops_per_token,
     recompute_countable,
     utilization,
 )
 from tests.kit.benchmark.metrics.memory import GiB
 from tests.kit.benchmark.metrics.summary import summarize
 from tests.kit.benchmark.metrics.time import percentile, slowest_rank_steps, time_metrics
+from tests.kit.benchmark.runner.counting import AttentionCounter, attended_pairs
 from tests.kit.benchmark.runner.measure import COMPLETED
 from tests.kit.benchmark.scenarios import report as report_module
 from tests.kit.benchmark.scenarios.report import build_report, render_markdown
@@ -206,6 +208,7 @@ def test_cpu_run_end_to_end(tmp_path, monkeypatch):
         implementation="unchanged",
         warmup_steps=1,
         timed_steps=3,
+        weights=RANDOM,
     )
     measurement = run_single(setup, repeats=2, spec=TINY)
     result = build_report(measurement, {"commit": "abc"}, ["python", "-m", "x"])
@@ -459,3 +462,99 @@ def test_summary_flags_a_device_that_another_process_uses():
     busy = summarize([record([1.0], memory=memory, used=int(35.8 * GiB))], FLOPS, PEAK)
     assert any("another process shared it" in flag for flag in busy["flags"])
     assert summarize([record([1.0], memory=memory, used=int(0.4 * GiB))], FLOPS, PEAK)["flags"] == []
+
+
+TINY_LLAMA_CONFIG = dict(
+    vocab_size=256,
+    hidden_size=32,
+    intermediate_size=64,
+    num_hidden_layers=2,
+    num_attention_heads=4,
+    num_key_value_heads=2,
+    attn_implementation="sdpa",
+    use_cache=False,
+)
+
+
+def test_published_models_build_from_their_config_without_weights():
+    source = HFModel("org/never-downloaded", "0" * 40, "transformers.LlamaForCausalLM", config=TINY_LLAMA_CONFIG)
+    with torch.device("meta"):
+        model = source()
+    assert isinstance(model, transformers.LlamaForCausalLM) and model.config.hidden_size == 32
+    spec = BenchmarkSpec(models={"hf": source, "fn": tiny_llama})
+    assert spec.has_pretrained("hf") and not spec.has_pretrained("fn")
+    with pytest.raises(ValueError, match="no published weights"):
+        spec.build("fn", pretrained=True)
+    with pytest.raises(ValueError, match="weights are one of"):
+        Setup(entry="e", size="s", config="ddp_fp32", seq_len=8, micro_batch=1, weights="real")
+    assert Setup(entry="e", size="s", config="ddp_fp32", seq_len=8, micro_batch=1).weights == PRETRAINED
+    with pytest.raises(ValueError, match="can search"):
+        BenchmarkSpec(models={"a": tiny_llama}, searchable=("hidden_size",))
+
+
+def test_video_latents_and_the_flow_matching_loss():
+    video = LatentVideo(channels=4, frames=2, height=4, width=6, patch=(1, 2, 2), text_len=3, text_dim=8)
+    assert video.tokens == 2 * 2 * 3
+    batch = video(None, 2, video.tokens, torch.Generator().manual_seed(0))
+    assert batch["hidden_states"].shape == (2, 4, 2, 4, 6) and batch["encoder_hidden_states"].shape == (2, 3, 8)
+    assert batch["timestep"].shape == (2,) and 0 <= float(batch["timestep"].min()) <= 1000
+    assert LatentTokens(video.patch)(batch) == 2 * video.tokens
+    with pytest.raises(ValueError, match="frames and resolution"):
+        video(None, 1, 100, torch.Generator())
+
+    class Zero(torch.nn.Module):
+        def forward(self, hidden_states, timestep, encoder_hidden_states, return_dict):
+            assert not return_dict
+            return (torch.zeros_like(hidden_states),)
+
+    assert flow_matching_loss(Zero(), batch) == pytest.approx(float((batch["target"] ** 2).mean()))
+
+
+def tiny_qwen3_moe():
+    config = transformers.Qwen3MoeConfig(
+        vocab_size=256,
+        hidden_size=32,
+        intermediate_size=64,
+        moe_intermediate_size=16,
+        num_hidden_layers=2,
+        num_attention_heads=4,
+        num_key_value_heads=2,
+        head_dim=8,
+        num_experts=4,
+        num_experts_per_tok=2,
+        attn_implementation="sdpa",
+        use_cache=False,
+    )
+    return transformers.Qwen3MoeForCausalLM(config)
+
+
+TINY_MOE = BenchmarkSpec(
+    models={"tiny": tiny_qwen3_moe},
+    seq_len=16,
+    micro_batch=2,
+    flops_fn=moe_decoder_flops_per_token,
+    count_on_device=True,
+)
+
+
+@rerun_if_address_is_in_use()
+def test_moe_is_counted_on_the_device_and_matches_its_formula(monkeypatch):
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "")
+    setup = Setup(
+        entry="moe",
+        size="tiny",
+        config="ddp_fp32",
+        seq_len=16,
+        micro_batch=2,
+        devices=2,
+        warmup_steps=1,
+        timed_steps=2,
+        weights=RANDOM,
+    )
+    measurement = run_single(setup, repeats=1, spec=TINY_MOE)
+    flops = measurement["flops"]
+    assert flops["counted_on"] == DEVICE and flops["unseen_masks"] == 0
+    # each token goes through 2 of the 4 experts: the count of what ran matches the formula
+    assert abs(flops["difference"]) < ROTARY_SHARE * 10
+    # the counting step is not timed
+    assert all(len(rank["step_s"]) == 2 for rank in measurement["runs"][0]["ranks"])

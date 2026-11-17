@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional
 
 from tests.kit.numerics.trace import repository_state
 
-from .config.model import DEFAULT_IMPLEMENTATION, spec_of
+from .config.model import DEFAULT_IMPLEMENTATION, PRETRAINED, RANDOM, WEIGHTS, spec_of
 from .config.optimizers import OPTIMIZERS
 from .config.plugins import CONFIGS
 from .config.setup import Setup, parse_field
@@ -54,6 +54,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     parser.add_argument("--config", required=True, choices=sorted(CONFIGS))
     parser.add_argument("--optimizer", default=defaults["optimizer"], choices=sorted(OPTIMIZERS))
+    parser.add_argument(
+        "--weights",
+        default=defaults["weights"],
+        choices=WEIGHTS,
+        help="the published weights (default; from the HuggingFace cache) or random ones",
+    )
     parser.add_argument("--devices", type=int, default=defaults["devices"], help="one process per device")
     parser.add_argument("--seq-len", type=int, help="defaults to the entry's BenchmarkSpec.seq_len")
     parser.add_argument("--micro-batch", type=int, help="per device; defaults to the entry's BenchmarkSpec")
@@ -109,10 +115,15 @@ def main(argv: Optional[List[str]] = None) -> int:
         devices=args.devices,
         implementation=args.implementation,
         optimizer=args.optimizer,
+        weights=args.weights,
         gradient_checkpointing=args.gradient_checkpointing,
         warmup_steps=args.warmup_steps,
         timed_steps=args.timed_steps,
     )
+    if setup.weights == PRETRAINED and not spec.has_pretrained(setup.size):
+        parser.error(f"{args.entry} {setup.size} declares no published weights; add --weights {RANDOM}")
+    if args.search and args.search not in spec.searchable:
+        parser.error(f"{args.entry} can search {spec.searchable}, not {args.search}")
     if setup.implementation not in spec.implementation_names:
         parser.error(f"--implementation is one of {spec.implementation_names}")
     search = scaling = None

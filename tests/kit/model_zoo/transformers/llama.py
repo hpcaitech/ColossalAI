@@ -73,7 +73,8 @@ if HAS_LLAMA:
         config.pad_token_id = config.eos_token_id
 
     # Real sizes for benchmarking, from the config.json of meta-llama/Llama-3.2-1B and meta-llama/Llama-3.1-8B
-    # (rope scaling left out: it changes no shape and no FLOP)
+    # (rope scaling left out: it changes no shape and no FLOP). Random weights only: the repositories are gated and
+    # not in the shared cache
     LLAMA3 = dict(
         vocab_size=128256,
         num_key_value_heads=8,

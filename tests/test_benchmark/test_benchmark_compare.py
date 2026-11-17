@@ -7,6 +7,7 @@ import pytest
 from torch import nn
 
 from colossalai.testing import rerun_if_address_is_in_use
+from tests.kit.benchmark.config.model import RANDOM
 from tests.kit.benchmark.config.plugins import CONFIGS, transformer_blocks
 from tests.kit.benchmark.config.setup import Setup
 from tests.kit.benchmark.metrics.summary import comparison, summarize
@@ -66,7 +67,14 @@ def test_comparison_changes_one_comparable_field():
 def test_cpu_comparison_of_two_implementations(monkeypatch):
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "")
     setup = Setup(
-        entry="tiny", size="tiny", config="ddp_fp32", seq_len=16, micro_batch=2, warmup_steps=1, timed_steps=2
+        entry="tiny",
+        size="tiny",
+        config="ddp_fp32",
+        seq_len=16,
+        micro_batch=2,
+        warmup_steps=1,
+        timed_steps=2,
+        weights=RANDOM,
     )
     ours = run_single(setup, repeats=1, spec=TINY)
     compared = run_compare(ours, "implementation", "unchanged", repeats=1, spec=TINY)

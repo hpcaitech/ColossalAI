@@ -17,13 +17,14 @@ from typing import Any, Callable, Dict, List, Optional
 
 import torch
 
-from ..config.model import BenchmarkSpec, spec_of
+from ..config.model import SEARCHABLE, BenchmarkSpec, spec_of
 from ..config.setup import Setup
 from ..metrics.memory import memory_metrics
 from ..runner.measure import NotCompleted, completed, measure
 from .single import DEFAULT_REPEATS, run_single
 
-SEARCHED = ("seq_len", "micro_batch")
+# the fields a search may change; an entry may allow fewer (BenchmarkSpec.searchable)
+SEARCHED = SEARCHABLE
 DEFAULT_GRANULARITY = {"seq_len": 256, "micro_batch": 1}
 
 
@@ -118,8 +119,11 @@ def run_search(
     A probe trains as many steps as the measurement, so the measurement normally fits too; if it runs out of memory
     after all (near the limit a run is not deterministic to the last token), the next smaller value that fitted is
     measured instead and the search says so."""
+    resolved = spec or spec_of(setup.entry)
+    if field not in resolved.searchable:
+        raise ValueError(f"{setup.entry} can search {resolved.searchable}, not {field!r}")
     if upper is None:
-        upper = default_upper(spec or spec_of(setup.entry), setup.size, field)
+        upper = default_upper(resolved, setup.size, field)
     found = search_max(setup, field, lambda s: probe(s, spec), granularity=granularity, upper=upper)
     if found["max"] is None:
         raise RuntimeError(f"not even {field}={found['granularity']} fits: {found['probes']}")

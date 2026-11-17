@@ -4,7 +4,7 @@ one field (the sequence length, the device count, the plugin, the implementation
 from dataclasses import dataclass, fields
 from typing import Any
 
-from .model import DEFAULT_IMPLEMENTATION
+from .model import DEFAULT_IMPLEMENTATION, PRETRAINED, WEIGHTS
 from .optimizers import DEFAULT_OPTIMIZER, OPTIMIZERS
 from .plugins import CONFIGS
 
@@ -24,6 +24,8 @@ class Setup:
     devices: int = 1
     implementation: str = DEFAULT_IMPLEMENTATION
     optimizer: str = DEFAULT_OPTIMIZER
+    # the published weights by default: a MoE router's balance, and anything else that depends on values, is real
+    weights: str = PRETRAINED
     gradient_checkpointing: bool = False
     warmup_steps: int = WARMUP_STEPS
     timed_steps: int = TIMED_STEPS
@@ -35,6 +37,8 @@ class Setup:
     def __post_init__(self):
         if self.config not in CONFIGS:
             raise ValueError(f"unknown config {self.config!r}; known: {sorted(CONFIGS)}")
+        if self.weights not in WEIGHTS:
+            raise ValueError(f"weights are one of {WEIGHTS}, not {self.weights!r}")
         if self.optimizer not in OPTIMIZERS:
             raise ValueError(f"unknown optimizer {self.optimizer!r}; known: {sorted(OPTIMIZERS)}")
         if self.devices < 1:
