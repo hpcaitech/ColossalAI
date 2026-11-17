@@ -90,7 +90,7 @@ jobs:
           path: ${{ steps.package-source.outputs.archive }}
           compression-level: 0
           if-no-files-found: error
-          retention-days: 1
+          retention-days: ${{ inputs.artifact_retention_days }}
 
   run-batches:
     needs: prepare-source

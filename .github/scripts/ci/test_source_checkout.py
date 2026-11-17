@@ -98,8 +98,9 @@ class SourceCheckoutTests(unittest.TestCase):
     def alter_archive(self, mutate):
         unpacked = self.root / "unpacked"
         unpacked.mkdir()
-        with tarfile.open(self.archive) as archive:
-            archive.extractall(unpacked, filter="fully_trusted")
+        # Use the same tar executable as production, including on runners
+        # whose system Python predates tarfile extraction filters.
+        subprocess.run(["tar", "-xzf", str(self.archive), "-C", str(unpacked)], check=True)
         mutate(unpacked / "repo")
         with tarfile.open(self.archive, "w:gz") as archive:
             archive.add(unpacked / "repo", arcname="repo")
