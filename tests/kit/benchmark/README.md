@@ -110,8 +110,22 @@ For a causal language model that is all. Other models also give `batch_fn` (one 
 `tokens_fn` (the tokens a batch counts for throughput, e.g. latent tokens of a diffusion model) and `loss_fn`; see
 `config/model.py`. Weights are random: throughput and memory of a dense model do not depend on them.
 
-A model whose FLOPs have a closed formula gives it as `flops_fn` (`decoder_flops_per_token` covers Llama-, Qwen3- and
-Mistral-style decoders); any other model is counted (see MFU below).
+FLOPs are counted automatically (see MFU below), so a formula is optional. A model line that writes one gives it as
+`flops_fn(model, seq_len)`, in its own model_zoo file next to the `BenchmarkSpec`: the line knows its layers best
+(e.g. Gated DeltaNet, a MoE router). Every measurement then checks the formula against the count and flags a
+difference above 5%, and `tests/test_benchmark/test_benchmark_device.py` checks every declared formula at its real
+sizes in CI. A formula follows the same conventions as the count, so that MFU compares across lines:
+
+- model FLOPs per trained token: the matrix multiplications of one forward and backward, 2 FLOPs per multiply-add
+  forward and twice that backward, i.e. 6 per weight per token (PaLM, appendix B);
+- not the forward that gradient checkpointing recomputes (that is HFU, counted separately);
+- causal attention halved (its score matrix and the product with the values), non-causal attention whole;
+- element-wise operations, norms and softmax left out;
+- a MoE layer counts the experts each token is routed to, not all of them.
+
+Build on `decoder_flops_per_token` (Llama-, Qwen3- and Mistral-style decoders) for the standard attention and MLP and
+add what is specific to the model. Where the count cannot run (a router whose dispatch depends on the values, a layer
+with no meta implementation), the formula is the only source and is reviewed by the benchmark owners.
 
 A model that can be computed in several ways (fused kernels, ColossalAI's `ColoAttention` or MoE layer, the plain
 PyTorch modules) declares the others as `implementations`: functions that take the model as built (the `"default"`
