@@ -1,6 +1,19 @@
+import importlib
+import importlib.util
 import os
+import warnings
 
-from . import custom, diffusers, timm, torchaudio, torchvision, transformers
+from . import custom, diffusers
+
+# Text-only CPU environments need not install the optional vision/audio model families.
+# Check package availability before importing; errors in installed packages must still surface.
+for _family in ("timm", "torchaudio", "torchvision"):
+    if importlib.util.find_spec(_family) is not None:
+        globals()[_family] = importlib.import_module(f".{_family}", __name__)
+    else:
+        warnings.warn(f"Optional model-zoo family {_family!r} is not registered: package is not installed.")
+
+from . import transformers
 from .executor import run_fwd, run_fwd_bwd
 from .registry import model_zoo
 

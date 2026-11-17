@@ -34,6 +34,11 @@ _POLICY_LIST = {
     "transformers_modules.modeling_llada.LLaDAModelLM": PolicyLocation("llada", "LLaDAModelLMPolicy"),
     "transformers_modules.modeling_llada2_moe.LLaDA2MoeModelLM": PolicyLocation("llada2_moe", "LLaDA2MoeModelLMPolicy"),
     "colossalai.shardformer.modeling.ouro.OuroForCausalLM": PolicyLocation("ouro", "OuroForCausalLMPolicy"),
+    "transformers.models.gemma4.modeling_gemma4.Gemma4TextModel": PolicyLocation("gemma4", "Gemma4Policy"),
+    "transformers.models.gemma4.modeling_gemma4.Gemma4ForCausalLM": PolicyLocation("gemma4", "Gemma4ForCausalLMPolicy"),
+    "transformers.models.gemma4.modeling_gemma4.Gemma4ForConditionalGeneration": PolicyLocation(
+        "gemma4", "Gemma4ForConditionalGenerationPolicy"
+    ),
     # BERT
     "transformers.models.bert.modeling_bert.BertModel": PolicyLocation(file_name="bert", class_name="BertModelPolicy"),
     "transformers.models.bert.modeling_bert.BertForPreTraining": PolicyLocation(

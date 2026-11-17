@@ -6,6 +6,7 @@ from .chatglm2 import *
 from .command import *
 from .deepseek import *
 from .falcon import *
+from .gemma4 import *
 from .gpt import *
 from .gptj import *
 from .llama import *

@@ -224,11 +224,11 @@ class GeminiDDP(ModelWrapper):
     def parameters(self, recurse: bool = True):
         return self.module.parameters(recurse)
 
-    def named_parameters(self, prefix: str = "", recurse: bool = True):
-        return self.module.named_parameters(prefix, recurse)
+    def named_parameters(self, prefix: str = "", recurse: bool = True, remove_duplicate: bool = True):
+        return self.module.named_parameters(prefix, recurse, remove_duplicate=remove_duplicate)
 
-    def named_buffers(self, prefix: str = "", recurse: bool = True):
-        return self.module.named_buffers(prefix, recurse)
+    def named_buffers(self, prefix: str = "", recurse: bool = True, remove_duplicate: bool = True):
+        return self.module.named_buffers(prefix, recurse, remove_duplicate=remove_duplicate)
 
     def named_children(self):
         return self.module.named_children()
@@ -680,7 +680,7 @@ class GeminiDDP(ModelWrapper):
             hook(state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs)
 
         persistent_buffers = {k: v for k, v in self.named_buffers() if k not in self._non_persistent_buffers_set}
-        local_name_params = itertools.chain(self.named_parameters(), persistent_buffers.items())
+        local_name_params = itertools.chain(self.named_parameters(remove_duplicate=False), persistent_buffers.items())
         local_state = {k: v for k, v in local_name_params if v is not None}
 
         def load(

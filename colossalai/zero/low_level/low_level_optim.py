@@ -36,6 +36,8 @@ from ._utils import (
 from .bookkeeping import BucketStore, GradientStore, TensorBucket
 from .zero_hook import set_all_gather_handle, wait_all_gather_handle
 
+_MASTER_PARAM_STATE_KEY = "_colossalai_master_param"
+
 
 class LowLevelZeroFP16MixedPrecisionMixin(FP16MixedPrecisionMixin):
     def __init__(
@@ -762,7 +764,10 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
     def state_dict(
         self, pinned_state_dicts: Optional[Dict[str, Dict[str, torch.Tensor]]] = None, only_on_master: bool = False
     ) -> Dict:
-        """Return a state_dict same with DDP
+        """Return PyTorch-style optimizer state, including FP32 masters for exact resume.
+
+        Master tensors are stored under a private key inside each parameter state.
+        ``load_state_dict`` removes this metadata before passing states to the optimizer.
 
         Returns:
             Dict: the pytorch form state_dict
@@ -771,9 +776,12 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         device = get_accelerator().get_current_device()
         for param_group in self.optim.param_groups:
             for param in param_group["params"]:
-                if param not in self.optim.state:
+                if param not in self.optim.state and not self._master_weights:
                     continue
-                state = self.optim.state[param]
+                state = dict(self.optim.state.get(param, {}))
+                if self._master_weights:
+                    # FP16/BF16 working weights cannot reconstruct sub-precision master updates.
+                    state[_MASTER_PARAM_STATE_KEY] = param.detach()
                 working_param = self.master_to_working_param[id(param)]
                 pg = self.param_to_pg[working_param]
                 if not only_on_master or get_nd_rank(pg) == 0:
@@ -831,7 +839,19 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
                         v_list = v.split(v.numel() // world_size)
                         zero_state_dict["state"][param_idx][k] = v_list[rank].detach().clone()
 
+            self.load_master_param_from_state(idx2master[param_idx], state)
+
         self.optim.load_state_dict(zero_state_dict)
+
+    @staticmethod
+    @torch.no_grad()
+    def load_master_param_from_state(param: Tensor, state: Dict) -> None:
+        """Restore a partitioned master and keep private metadata out of the Adam state."""
+        master = state.pop(_MASTER_PARAM_STATE_KEY, None)
+        if master is not None:
+            if master.shape != param.shape:
+                raise ValueError(f"Master checkpoint shape {master.shape} does not match parameter {param.shape}")
+            param.copy_(master)
 
     def state_dict_shard(
         self,
@@ -864,7 +884,9 @@ class LowLevelZeroOptimizer(OptimizerWrapper):
         for param_group in self.optim.param_groups:
             for master_param in param_group["params"]:
                 param_idx = master2idx[master_param]
-                states = local_states[param_idx]
+                states = dict(local_states.get(param_idx, {}))
+                if self._master_weights:
+                    states[_MASTER_PARAM_STATE_KEY] = master_param.detach()
 
                 current_block_size = 0
                 if pinned_state_dicts is not None and param_idx not in pinned_state_dicts:

@@ -418,6 +418,14 @@ class GeminiOptimizer(OptimizerWrapper):
         assert chunk_offset >= 0 and shard_offset >= 0
         return chunk_offset, shard_offset, shard_size
 
+    def _checkpoint_param_state(self, fake_param):
+        state = dict(self.optim.state[fake_param])
+        if self.module.master_weights:
+            chunk = self.param_to_chunk16[fake_param].paired_chunk
+            begin, end = self.param_to_range[fake_param]
+            state["_colossalai_master_param"] = chunk.payload[begin:end].detach()
+        return state
+
     def collect_states(self, param_id: int, only_rank_0: bool = True) -> dict:
         """
         Args:
@@ -443,7 +451,7 @@ class GeminiOptimizer(OptimizerWrapper):
         # Fetch names of states through all_gather.
         local_state_names = None
         if fake_param is not None:
-            local_state_names = list(self.optim.state[fake_param].keys())
+            local_state_names = list(self._checkpoint_param_state(fake_param).keys())
         gathered_state_names = [None for _ in range(dist.get_world_size(zero_group))]
         dist.barrier()
         dist.all_gather_object(gathered_state_names, local_state_names, zero_group)
@@ -478,7 +486,7 @@ class GeminiOptimizer(OptimizerWrapper):
         if chunk.keep_gathered:
             assert param_id in self.id_to_fake_params
             if is_collector:
-                states = self.optim.state[fake_param]
+                states = self._checkpoint_param_state(fake_param)
                 for state_name in state_names:
                     if state_name == "step":
                         # To keep aligned with pytorch, state 'step' is stored as a pytorch tensor with type float32.
@@ -586,7 +594,7 @@ class GeminiOptimizer(OptimizerWrapper):
 
         fake_param = self.id_to_fake_params[param_id]
         param_range = self.param_to_range[fake_param]
-        states = self.optim.state[fake_param]
+        states = self._checkpoint_param_state(fake_param)
         shard_size = param_range[1] - param_range[0]
         compacted_size = 0
         for name in state_names:
@@ -773,6 +781,12 @@ class GeminiOptimizer(OptimizerWrapper):
         for k, v in saved_states.items():
             updated_states[k] = cast(fake_param, state_range, v, global_shape, origin_shape, k)
             del v  # clean loaded states
+        master = updated_states.pop("_colossalai_master_param", None)
+        if master is not None and self.module.master_weights:
+            chunk = self.param_to_chunk16[fake_param].paired_chunk
+            begin, end = self.param_to_range[fake_param]
+            with torch.no_grad():
+                chunk.payload[begin:end].copy_(master)
         self.optim.state[fake_param].update(updated_states)
 
     def load_param_states(self, param_states: dict):
