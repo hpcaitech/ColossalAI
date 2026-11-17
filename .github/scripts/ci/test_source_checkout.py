@@ -114,6 +114,8 @@ class SourceCheckoutTests(unittest.TestCase):
     def test_pinned_checkout_retains_git_metadata_in_private_copy(self):
         packaged = self.package()
         self.assertEqual(packaged.returncode, 0, packaged.stderr)
+        with tarfile.open(self.archive) as archive:
+            self.assertTrue(all(name == "repo/.git" or name.startswith("repo/.git/") for name in archive.getnames()))
         restored = self.restore()
         self.assertEqual(restored.returncode, 0, restored.stderr)
         source = Path(self.environment.read_text().strip().split("=", 1)[1])
@@ -155,12 +157,12 @@ class SourceCheckoutTests(unittest.TestCase):
         self.assert_rejected(self.restore())
         self.assertFalse((self.download / "repo").exists())
 
-    def test_archive_must_match_the_requested_commit_tree(self):
+    def test_archive_rejects_uncommitted_working_tree_payload(self):
         self.assertEqual(self.package().returncode, 0)
         self.alter_archive(lambda repo: (repo / "tracked.txt").write_text("not the pinned source\n"))
         restored = self.restore()
         self.assert_rejected(restored)
-        self.assertIn("does not match commit tree", restored.stderr)
+        self.assertIn("must contain only Git metadata and objects", restored.stderr)
 
     def test_missing_git_objects_are_rejected(self):
         self.assertEqual(self.package().returncode, 0)

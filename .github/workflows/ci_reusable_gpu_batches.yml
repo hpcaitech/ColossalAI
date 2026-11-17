@@ -75,9 +75,9 @@ jobs:
           [[ "$(git -C "$source_root/repo" rev-parse FETCH_HEAD)" == "$CI_SOURCE_SHA" ]]
           git -C "$source_root/repo" -c core.hooksPath=/dev/null checkout --quiet --detach "$CI_SOURCE_SHA"
           git -C "$source_root/repo" fsck --no-reflogs
-          # Tar preserves executable bits and symlinks through the artifact
-          # service, including the Git data required by numerical reports.
-          tar --create --gzip --file "$archive" --directory "$source_root" repo
+          # Send Git objects once, without a duplicate working tree. Checkout
+          # on the receiver restores tracked contents, modes and symlinks.
+          tar --create --gzip --file "$archive" --directory "$source_root" repo/.git
           archive_sha256="$(sha256sum "$archive" | cut -d ' ' -f 1)"
           printf 'Source commit: %s\nArchive SHA256: %s\n' "$CI_SOURCE_SHA" "$archive_sha256"
           printf 'archive=%s\narchive_sha256=%s\n' "$archive" "$archive_sha256" >> "$GITHUB_OUTPUT"
@@ -159,7 +159,7 @@ jobs:
           printf 'CI_SOURCE_ARTIFACT_DIR=%s\n' "$source_root" >> "$GITHUB_ENV"
 
       - name: Download the pinned source archive
-        timeout-minutes: 10
+        timeout-minutes: 15
         uses: actions/download-artifact@v8
         with:
           artifact-ids: ${{ needs.prepare-source.outputs.artifact_id }}
@@ -183,9 +183,15 @@ jobs:
           # No network access is needed after restoring this self-contained Git
           # repository. Check both object integrity and every working-tree blob.
           [[ -d "$source_root/repo/.git" ]]
+          if [[ -n "$(find "$source_root/repo" -mindepth 1 -maxdepth 1 ! -name .git -print -quit)" ]]; then
+            printf 'Source archive must contain only Git metadata and objects.\n' >&2
+            exit 1
+          fi
           [[ ! -e "$source_root/repo/.git/objects/info/alternates" ]]
           [[ "$(git -C "$source_root/repo" rev-parse HEAD)" == "$CI_SOURCE_SHA" ]]
           git -C "$source_root/repo" -c protocol.allow=never fsck --no-reflogs
+          git -C "$source_root/repo" -c protocol.allow=never -c core.hooksPath=/dev/null \
+            reset --hard "$CI_SOURCE_SHA"
           git -C "$source_root/repo" -c protocol.allow=never add --force --all
           snapshot_tree="$(git -C "$source_root/repo" -c protocol.allow=never write-tree)"
           commit_tree="$(git -C "$source_root/repo" rev-parse 'HEAD^{tree}')"
