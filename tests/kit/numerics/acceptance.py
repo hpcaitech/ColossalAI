@@ -17,7 +17,6 @@ import argparse
 import json
 import math
 import os
-import subprocess
 import sys
 import tempfile
 import traceback
@@ -41,7 +40,7 @@ from .capture.recipes import UnsupportedRecipe
 from .judge import AlignmentReport
 from .scenarios import data_parallel, independent_impl, resume
 from .spec import NumericsSpec
-from .trace import environment_meta
+from .trace import environment_meta, repository_state
 
 SCHEMA_VERSION = 1
 PASSED, FAILED, UNSUPPORTED, NOT_RUN = "passed", "failed", "unsupported", "not_run"
@@ -162,7 +161,7 @@ def run_acceptance(
         "entry": entry if isinstance(entry, str) else "custom",
         "created": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "command": sys.argv,
-        "repository": _repository(),
+        "repository": repository_state(),
         "environment": _environment(),
         "steps": steps,
         "recipe_overrides": {"fp16_initial_loss_scale": spec.fp16_loss_scale},
@@ -280,24 +279,6 @@ def _spec(entry) -> NumericsSpec:
         entry = model_zoo[entry]
     attribute = entry[4]
     return (attribute.numerics if attribute is not None else None) or NumericsSpec()
-
-
-def _repository() -> Dict[str, Any]:
-    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-
-    def git(*args) -> str:
-        # safe.directory: the checkout may belong to another user than the one running (e.g. root in a container)
-        command = ["git", "-c", "safe.directory=*", *args]
-        return subprocess.run(command, cwd=root, capture_output=True, text=True, check=True).stdout.strip()
-
-    try:
-        changed = git("status", "--porcelain").splitlines()
-        return {"commit": git("rev-parse", "HEAD"), "dirty": bool(changed), "changed": changed[:50]}
-    except subprocess.CalledProcessError as exc:
-        # e.g. a worktree mounted into a container without the main checkout its .git file points to
-        return {"error": f"{exc}: {exc.stderr.strip()}"}
-    except OSError as exc:
-        return {"error": str(exc)}
 
 
 def _environment() -> Dict[str, Any]:
