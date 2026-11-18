@@ -39,6 +39,7 @@ from colossalai.testing import rerun_if_address_is_in_use, spawn
 from .capture.recipes import UnsupportedRecipe
 from .judge import AlignmentReport
 from .scenarios import data_parallel, independent_impl, resume
+from .scenarios._distributed import worker_process_group
 from .spec import NumericsSpec
 from .trace import environment_meta, repository_state
 
@@ -259,8 +260,8 @@ def _in_process_group(fn: Callable, *args) -> AlignmentReport:
 
 
 def _worker(rank, world_size, port, fn, args, path):
-    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port)
-    torch.save(fn(*args), path)
+    with worker_process_group(rank, world_size, port):
+        torch.save(fn(*args), path)
 
 
 def _blank_control(entry, steps, cache_dir) -> AlignmentReport:

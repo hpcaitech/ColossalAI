@@ -35,11 +35,11 @@ import torch
 import torch.distributed as dist
 from torch.multiprocessing.spawn import ProcessExitedException, ProcessRaisedException
 
-import colossalai
 from colossalai.accelerator import get_accelerator
 from colossalai.booster import Booster
 from colossalai.testing import spawn
 from tests.kit.numerics.capture.plugins import make_optimizer
+from tests.kit.numerics.scenarios._distributed import worker_process_group
 
 from ..config.model import PRETRAINED, BenchmarkSpec, spec_of
 from ..config.optimizers import build_optimizer, for_cpu
@@ -90,25 +90,31 @@ def measure(setup: Setup, spec: Optional[BenchmarkSpec] = None) -> Dict[str, Any
 
 
 def _worker(rank, world_size, port, setup, spec, path):
-    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port)
-    spec = spec or spec_of(setup.entry)
-    used_at_start = device_used()
-    record = _train(spec, setup)
-    record["device_used_at_start"] = used_at_start
-    ranks = [None] * world_size
-    # objects, not tensors: works with every backend (gloo, NCCL, HCCL) and keeps Python ints and floats exact
-    dist.all_gather_object(ranks, record)
-    if rank == 0:
-        shared = {key: ranks[0].pop(key) for key in ("parameters", "optimizer")}
-        for other in ranks[1:]:
-            for key in shared:
-                other.pop(key)
-        with open(path, "w") as f:
-            json.dump(
-                {"status": COMPLETED, "setup": asdict(setup), **shared, "environment": environment(), "ranks": ranks},
-                f,
-            )
-    dist.destroy_process_group()
+    # releases the process group on the way out, also when training raises (see the numerics kit)
+    with worker_process_group(rank, world_size, port):
+        spec = spec or spec_of(setup.entry)
+        used_at_start = device_used()
+        record = _train(spec, setup)
+        record["device_used_at_start"] = used_at_start
+        ranks = [None] * world_size
+        # objects, not tensors: works with every backend (gloo, NCCL, HCCL) and keeps Python ints and floats exact
+        dist.all_gather_object(ranks, record)
+        if rank == 0:
+            shared = {key: ranks[0].pop(key) for key in ("parameters", "optimizer")}
+            for other in ranks[1:]:
+                for key in shared:
+                    other.pop(key)
+            with open(path, "w") as f:
+                json.dump(
+                    {
+                        "status": COMPLETED,
+                        "setup": asdict(setup),
+                        **shared,
+                        "environment": environment(),
+                        "ranks": ranks,
+                    },
+                    f,
+                )
 
 
 def _train(spec: BenchmarkSpec, setup: Setup) -> Dict[str, Any]:

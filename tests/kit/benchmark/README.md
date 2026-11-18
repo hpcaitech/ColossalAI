@@ -134,6 +134,14 @@ tokenized and packed to the fixed shape: a MoE router needs real tokens) and, fo
 `LatentVideo`, `LatentTokens` and `flow_matching_loss`; a model whose sequence is set by its frames and resolution
 declares `searchable=("micro_batch",)`.
 
+`batch_fn(model, micro_batch, seq_len, generator)` builds the batch at the size it is given, never a fixed one: the
+maximum search changes `micro_batch` or `seq_len` from call to call. It takes every random number from `generator`
+(e.g. `torch.randn(shape, generator=generator)`), never from the global random state: each rank's generator is seeded
+differently, so the ranks of a multi-device measurement train different data of the same shape, as in training. With
+the global state every rank gets the same batch, which does not change a dense model's speed but makes a MoE router
+send the same tokens to the same experts on every rank. These functions are part of the entry, so they go into the
+same pull request; one that several models can use goes into `config/data.py`.
+
 A model that has no model_zoo entry yet can be measured from `entries.py` (benchmark-only
 entries, looked up after model_zoo): `qwen3_moe` (Qwen3-30B-A3B) and `wan2_2_ti2v` (the Wan2.2-TI2V-5B transformer at
 480×832, 81 frames). Their specs move into model_zoo when the models get their entries; they are kept out of it until
