@@ -396,36 +396,20 @@ def test_checkpointing_uses_the_model_own_switch():
         enable_checkpointing(torch.nn.Linear(1, 1))
 
 
-@torch.library.custom_op("benchmark_test::matmul", mutates_args=())
-def _custom_matmul(x: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
-    return x @ w
-
-
-@_custom_matmul.register_fake
-def _(x, w):
-    return x.new_empty(x.shape[0], w.shape[1])
-
-
-_custom_matmul.register_autograd(
-    lambda ctx, grad: (grad @ ctx.w.t(), ctx.x.t() @ grad),
-    setup_context=lambda ctx, inputs, output: setattr(ctx, "x", inputs[0]) or setattr(ctx, "w", inputs[1]),
-)
-
-
-class CustomModel(torch.nn.Module):
-    """A model whose only matmul in the forward is a custom operator, which the counter cannot see by itself."""
+class ScaledModel(torch.nn.Module):
+    """A model whose only operation is element-wise, which FlopCounterMode does not count by itself."""
 
     def __init__(self):
         super().__init__()
-        self.weight = torch.nn.Parameter(torch.empty(8, 4))
+        self.weight = torch.nn.Parameter(torch.empty(8))
 
     def forward(self, x):
-        return _custom_matmul(x, self.weight)
+        return x * self.weight
 
 
 def _custom_spec(**kwargs):
     return BenchmarkSpec(
-        models={"tiny": CustomModel},
+        models={"tiny": ScaledModel},
         batch_fn=lambda model, micro_batch, seq_len, generator: {"x": torch.randn(seq_len, 8, generator=generator)},
         tokens_fn=lambda batch: batch["x"].shape[0],
         loss_fn=lambda model, batch: model(**batch).sum(),
@@ -433,16 +417,20 @@ def _custom_spec(**kwargs):
     )
 
 
-def test_custom_operators_count_through_their_formulas():
-    def matmul_flops(x_shape, w_shape, *args, out_shape=None, **kwargs):
-        return 2 * x_shape[0] * x_shape[1] * w_shape[1]
+def test_operators_without_a_count_count_through_their_formulas():
+    # a fused kernel registered as a custom operator is given its FLOPs the same way; aten.mul stands in for one
+    calls = []
+
+    def mul_flops(*args, out_shape=None, **kwargs):
+        calls.append(out_shape)
+        return 1000
 
     unseen = counted_flops_per_token(_custom_spec(), "tiny", seq_len=16, micro_batch=1)
     seen = counted_flops_per_token(
-        _custom_spec(flop_formulas={torch.ops.benchmark_test.matmul: matmul_flops}), "tiny", seq_len=16, micro_batch=1
+        _custom_spec(flop_formulas={torch.ops.aten.mul: mul_flops}), "tiny", seq_len=16, micro_batch=1
     )
-    # the forward product, 2 · 16 · 8 · 4, per token of 16
-    assert seen - unseen == 2 * 8 * 4
+    # each multiplication in the forward and backward adds the formula's 1000, per token of 16
+    assert unseen == 0 and calls and seen == pytest.approx(1000 * len(calls) / 16)
 
 
 def test_peak_lookup():
