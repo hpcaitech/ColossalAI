@@ -1,3 +1,5 @@
+# Preserve verbatim upstream fixtures; the loader verifies their pinned hashes.
+exclude: ^tests/fixtures/ouro/(ouro14|ouro26)/
 repos:
 
   - repo: https://github.com/PyCQA/autoflake

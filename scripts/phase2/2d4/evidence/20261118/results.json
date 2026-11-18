@@ -1,0 +1,526 @@
+[
+  {
+    "directory": "/results/2d4/pytest-20261118-041428-97kUjc",
+    "pytest": {
+      "tests": 80,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 0
+    },
+    "numerical_reports": [
+      {
+        "file": "tmp/test_ouro_accumulation_and_res0/dp.json",
+        "passed": true,
+        "checks": 27,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_accumulation_and_res0/resume.json",
+        "passed": true,
+        "checks": 292,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_accumulation_and_res1/dp.json",
+        "passed": true,
+        "checks": 27,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_accumulation_and_res1/resume.json",
+        "passed": true,
+        "checks": 292,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_accumulation_and_res2/dp.json",
+        "passed": true,
+        "checks": 27,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_accumulation_and_res2/resume.json",
+        "passed": true,
+        "checks": 292,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_accumulation_and_res3/dp.json",
+        "passed": true,
+        "checks": 27,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_accumulation_and_res3/resume.json",
+        "passed": true,
+        "checks": 292,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_accumulation_and_res4/dp.json",
+        "passed": true,
+        "checks": 27,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_accumulation_and_res4/resume.json",
+        "passed": true,
+        "checks": 292,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_accumulation_and_res5/dp.json",
+        "passed": true,
+        "checks": 27,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_accumulation_and_res5/resume.json",
+        "passed": true,
+        "checks": 188,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_accumulation_and_res6/dp.json",
+        "passed": true,
+        "checks": 27,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_accumulation_and_res6/resume.json",
+        "passed": true,
+        "checks": 188,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_accumulation_and_res7/dp.json",
+        "passed": true,
+        "checks": 27,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_accumulation_and_res7/resume.json",
+        "passed": true,
+        "checks": 84,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_accumulation_and_res8/dp.json",
+        "passed": true,
+        "checks": 27,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_accumulation_and_res8/resume.json",
+        "passed": true,
+        "checks": 292,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_accumulation_and_res9/dp.json",
+        "passed": true,
+        "checks": 27,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_accumulation_and_res9/resume.json",
+        "passed": true,
+        "checks": 188,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_ddp_bf16_o0/alignment-0.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_ddp_bf16_o0/alignment-1.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_ddp_bf16_o1/alignment-0.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_ddp_bf16_o1/alignment-1.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_ddp_fp32_o0/alignment-0.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_ddp_fp32_o0/alignment-1.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_ddp_fp32_o1/alignment-0.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_ddp_fp32_o1/alignment-1.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_fsdp_bf16_0/alignment-0.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_fsdp_bf16_0/alignment-1.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_fsdp_bf16_1/alignment-0.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_fsdp_bf16_1/alignment-1.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_fsdp_fp32_0/alignment-0.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_fsdp_fp32_0/alignment-1.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_fsdp_fp32_1/alignment-0.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_fsdp_fp32_1/alignment-1.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_gemini_bf10/alignment-0.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_gemini_bf10/alignment-1.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_gemini_bf11/alignment-0.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_gemini_bf11/alignment-1.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_gemini_off0/alignment-0.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_gemini_off0/alignment-1.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_gemini_off1/alignment-0.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_gemini_off1/alignment-1.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_gemini_sha0/alignment-0.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_gemini_sha0/alignment-1.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_gemini_sha1/alignment-0.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_gemini_sha1/alignment-1.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_zero1_bf160/alignment-0.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_zero1_bf160/alignment-1.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_zero1_bf161/alignment-0.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_zero1_bf161/alignment-1.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_zero1_fp320/alignment-0.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_zero1_fp320/alignment-1.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_zero1_fp321/alignment-0.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_zero1_fp321/alignment-1.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_zero2_bf160/alignment-0.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_zero2_bf160/alignment-1.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_zero2_bf161/alignment-0.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_zero2_bf161/alignment-1.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_zero2_bf162/alignment-0.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_zero2_bf162/alignment-1.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_zero2_bf163/alignment-0.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_zero2_bf163/alignment-1.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_zero2_fp320/alignment-0.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_zero2_fp320/alignment-1.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_zero2_fp321/alignment-0.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_alignment_zero2_fp321/alignment-1.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_reference_blank_cont0/blank.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      },
+      {
+        "file": "tmp/test_ouro_reference_blank_cont1/blank.json",
+        "passed": true,
+        "checks": 59,
+        "failures": []
+      }
+    ],
+    "complete": true,
+    "passed": false
+  },
+  {
+    "directory": "/results/2d4/pytest-20261118-043433-tJ9G71",
+    "pytest": {
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "complete": true,
+    "passed": true
+  },
+  {
+    "directory": "/results/2d4/pytest-20261118-043302-v5ZPx9",
+    "pytest": {
+      "tests": 141,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "complete": true,
+    "passed": true
+  },
+  {
+    "directory": "/results/2d4/pytest-20261118-043251-qW7Ksc",
+    "pytest": {
+      "tests": 14,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "complete": true,
+    "passed": true
+  },
+  {
+    "directory": "/results/2d4/run-20261118-043249-GcymfW",
+    "full_models": [
+      {
+        "status": "passed",
+        "model": "ByteDance/Ouro-1.4B",
+        "revision": "574fa66cb8bf5abdc979642d01cf2b79b16bfab1",
+        "parameter_count": 1434652673,
+        "num_hidden_layers": 24,
+        "hidden_size": 2048,
+        "loops": 4,
+        "dtype": "bfloat16",
+        "batch_size": 1,
+        "sequence_length": 32,
+        "reference": "same official weights and loop, independently constructed causal mask",
+        "full_forward": "bitwise_equal",
+        "optimizer": "ZeRO-2 AdamW, one GPU, one step",
+        "gradient_tensors": 269,
+        "changed_parameter_samples": 208,
+        "checkpoint_recompute": true,
+        "loss": 8.303791999816895,
+        "peak_gpu_memory_bytes": 32438974976,
+        "seconds": 5.846442751993891,
+        "scope": "original-size pretrained smoke; not full-size optimizer/gradient L2, long-context, convergence or performance acceptance"
+      }
+    ],
+    "complete": true,
+    "passed": true
+  },
+  {
+    "directory": "/results/2d4/run-20261118-043544-o9nR6i",
+    "full_models": [
+      {
+        "status": "passed",
+        "model": "ByteDance/Ouro-2.6B",
+        "revision": "1ed04250da1a9936042725d302e81c8fa2ab5abd",
+        "parameter_count": 2667974657,
+        "num_hidden_layers": 48,
+        "hidden_size": 2048,
+        "loops": 4,
+        "dtype": "bfloat16",
+        "batch_size": 1,
+        "sequence_length": 32,
+        "reference": "same official weights and loop, independently constructed causal mask",
+        "full_forward": "bitwise_equal",
+        "optimizer": "ZeRO-2 AdamW, one GPU, one step",
+        "gradient_tensors": 533,
+        "changed_parameter_samples": 439,
+        "checkpoint_recompute": true,
+        "loss": 7.817824363708496,
+        "peak_gpu_memory_bytes": 59572058624,
+        "seconds": 9.92272953002248,
+        "scope": "original-size pretrained smoke; not full-size optimizer/gradient L2, long-context, convergence or performance acceptance"
+      }
+    ],
+    "complete": true,
+    "passed": true
+  }
+]

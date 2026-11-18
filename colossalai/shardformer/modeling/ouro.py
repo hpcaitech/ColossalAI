@@ -29,6 +29,9 @@ def _check_config(config):
         raise NotImplementedError(
             "Ouro compatibility requires use_cache=False and full attention without sliding windows"
         )
+    # HF leaves this unset until PreTrainedModel construction on a default reload.
+    if config._attn_implementation is None:
+        config._attn_implementation = "eager"
     if config._attn_implementation != "eager":
         raise NotImplementedError("Ouro compatibility requires attn_implementation='eager'")
     if config.head_dim != config.hidden_size // config.num_attention_heads or config.head_dim % 2:
@@ -79,11 +82,29 @@ def get_ouro_model_class(original_class):
             self.register_buffer("inv_freq", inv_freq, persistent=False)
             self.original_inv_freq = self.inv_freq
 
+    def enable_checkpointing(self, gradient_checkpointing_kwargs=None, every_n_layers=1, offload=False):
+        """Use HF's non-reentrant per-layer checkpoints across all loop iterations."""
+        options = dict(gradient_checkpointing_kwargs or {})
+        if options.get("use_reentrant", False) or every_n_layers != 1 or offload:
+            raise NotImplementedError(
+                "Ouro supports non-reentrant checkpointing of every layer without activation offload"
+            )
+        options["use_reentrant"] = False
+        return module.OuroPreTrainedModel.gradient_checkpointing_enable(
+            self, gradient_checkpointing_kwargs=options, every_n_layers=1, offload=False
+        )
+
     class OuroModel(module.OuroModel):
+        _supports_sdpa = False
+        _supports_flash_attn = False
+        _supports_flex_attn = False
+        gradient_checkpointing_enable = enable_checkpointing
+
         def __init__(self, config):
             _check_config(config)
             module.OuroPreTrainedModel.__init__(self, config)
-            self.padding_idx = config.pad_token_id
+            # Official snapshots omit this; HF4 supplied None, HF5 does not.
+            self.padding_idx = getattr(config, "pad_token_id", None)
             self.vocab_size = config.vocab_size
             self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
             self.layers = nn.ModuleList(
@@ -113,8 +134,6 @@ def get_ouro_model_class(original_class):
             _check_config(self.config)
             if use_cache or past_key_values is not None:
                 raise NotImplementedError("Ouro compatibility does not support KV cache")
-            if self.gradient_checkpointing:
-                raise NotImplementedError("Ouro gradient checkpointing has not been validated")
             if (input_ids is None) == (inputs_embeds is None):
                 raise ValueError("Specify exactly one of input_ids or inputs_embeds")
             if inputs_embeds is None:
@@ -154,6 +173,13 @@ def get_ouro_model_class(original_class):
             )
 
     class OuroForCausalLM(original_class):
+        # The upstream class advertises optimized attention that this adapter
+        # deliberately does not implement. Default HF reload must select eager.
+        _supports_sdpa = False
+        _supports_flash_attn = False
+        _supports_flex_attn = False
+        gradient_checkpointing_enable = enable_checkpointing
+
         # HF5 represents tied-weight relationships as a mapping, not a list.
         _tied_weights_keys = {"lm_head.weight": "model.embed_tokens.weight"}
         # The adapter is provided by ColossalAI, not a standalone HF remote-code file.

@@ -67,8 +67,8 @@ Evidence: `logs/2026-10-12-d4-audit.md`, `logs/2026-10-12-d4-fix/`, `logs/2026-1
 ## LLaDA, LLaDA2 and Ouro remote-code adapters (phase two)
 
 These three additional policy families bring the registry to 23 families.
-Validated environment: Transformers **5.17.0**, PyTorch **2.13.0+cu130**, CPU,
-FP32, tiny random models. The adapters deliberately reject other Transformers
+Initial 2D1 environment: Transformers **5.17.0**, PyTorch **2.13.0+cu130**, CPU,
+FP32, tiny random models. Ouro 2D4 adds the GPU validation described below. The adapters deliberately reject other Transformers
 versions pending regression testing.
 
 | Model | Pinned revision | Adapter |
@@ -140,28 +140,32 @@ attn_implementation="eager", local_files_only=True).
 Recreate the factory from the pinned original snapshot in a fresh process.
 AutoModel alone still selects the original remote class, not this adapter.
 Use save_pretrained/state_dict, not whole-model Python pickling.
-Full original-weight loading has not been executed in this validation; tiny
-sharded safetensors roundtrips test the construction/loading path and parameter keys.
+The initial 2D1 validation used tiny sharded safetensors roundtrips to test
+construction/loading and parameter keys. See the 2D4 report for Ouro original-weight checks.
 
 ### Support boundaries and evidence
 
 The policies admit the native path with enable_tensor_parallelism=False and
 all optional optimizations disabled. They intentionally perform no kernel
-replacement. TP/PP/SP/EP, gradient checkpointing, flash/JIT/fused/fp8 paths and
-extra_kwargs are rejected before policy mutation. This is model integration,
-not distributed training support.
+replacement. TP/PP/SP/EP, flash/JIT/fused/fp8 paths and extra_kwargs remain
+rejected before policy mutation. LLaDA/LLaDA2 still reject gradient checkpointing.
+Ouro accepts HF non-reentrant per-layer checkpointing; ShardFormer checkpoint
+configuration, reentrant checkpointing, partial-layer selection and activation
+offload remain unsupported. Data parallelism is supplied by Booster plugins,
+not by these native policies.
 
 Use eager attention, no KV cache and no sliding windows. Ouro additionally
 requires default full-head RoPE and contiguous positions starting at zero;
 its input mask is either absent or a binary 2D padding mask. Runtime cache,
 custom position offsets and prebuilt mask mappings are explicitly rejected.
-Generation, optimized GPU/BF16 training, long contexts, full pretrained weights,
-Booster/ZeRO and the complete diffusion objective remain outside this validation.
+Generation, optimized attention, long-context training and the complete diffusion
+objective remain outside this validation. Ouro GPU/BF16 data-parallel training
+is covered separately by 2D4; this does not extend LLaDA/LLaDA2 acceptance.
 
 tests/kit/remote_models.py provides lazy, offline tiny factories for all five
-snapshots without importing the unrelated full model zoo. They are intentionally
-not registered in its broad distributed test matrix yet. The two LLaDA2 versions
-remain separate fixtures despite sharing a class name.
+snapshots without importing the unrelated full model zoo. Ouro now has two
+model_zoo entries and dedicated Booster tests. LLaDA/LLaDA2 remain outside the
+broad distributed matrix; the two LLaDA2 versions remain separate fixtures.
 
 tests/test_shardformer/test_model/test_shard_remote_models.py checks actual
 ShardFormer auto/explicit policy entry, output/loss, every available parameter
@@ -188,3 +192,43 @@ basic-policy regression suite. Original 2D1 reconnaissance scripts remain
 available and continue to expose the unadapted Ouro construction failure.
 
 Validation on 2026-10-28: **105 passed, 0 failed, 0 skipped**. Log: /results/2d1/adapters-20261028-121109-MVBu0Z.log; JUnit: /results/2d1/adapters-validation-20261028-1212.xml.
+
+### Ouro 2D4: repeated-layer data-parallel training
+
+Use the same pinned snapshots and eager/full-attention restrictions above:
+
+~~~python
+model.gradient_checkpointing_enable(
+    gradient_checkpointing_kwargs={"use_reentrant": False}
+)
+model, _ = ShardFormer(ShardConfig(enable_tensor_parallelism=False)).optimize(model)
+# Then use Booster with the tested DDP, ZeRO, Gemini or FSDP configuration.
+~~~
+
+Every original decoder layer is reused across loop iterations. Checkpointing
+recomputes that layer during backward; it does not create new parameters or
+change the official loop/gate/loss. Default adapter-class HF reload now selects
+eager automatically; requesting an unsupported attention implementation still fails.
+Official configs that omit pad_token_id retain the HF4 default of no padding
+index (None); token zero is not silently frozen as a padding row.
+
+The dedicated tests cover two/four loop iterations, lazy construction,
+one/two GPUs, BF16, all-parameter gradients and updates, accumulation, checkpoint
+resume and HF reload. The independent tiny reference uses the official model
+constructor with a test-only HF5 RoPE bridge and a separate triangular mask;
+it never calls the production adapter forward. It is not an HF4-environment
+reference. The shared numerical judge and tolerances are unchanged. Its recipe
+audit additionally admits static Gemini BF16 CPU optimizer offload with explicit,
+fully sharded chunks; auto/partial offload remains unverified.
+
+A Gemini export between optimizer.step() and the next forward now reads the
+updated paired master chunk when the offloaded working shard is stale. Export
+still uses the previous dtype and leaves live chunks on their existing devices.
+
+Tests include verbatim, hash-checked Apache-2.0 Ouro source/config fixtures.
+They need no network or pretrained weights. Original-weight smoke tests use
+the separately prepared shared cache and are not included in normal CI.
+
+Reproduction, exact results, logs and remaining boundaries:
+[scripts/phase2/2d4](../scripts/phase2/2d4/README.md) and
+[2D4 results](../scripts/phase2/2d4/RESULTS.md).

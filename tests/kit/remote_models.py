@@ -1,16 +1,19 @@
 """Offline, pinned tiny fixtures for LLaDA/LLaDA2/Ouro.
 
 Importing this module neither downloads code nor imports any remote model.
-The caller must explicitly prepare the listed snapshots before construction.
+LLaDA snapshots must be prepared before construction; Ouro also has pinned
+source-only fixtures for offline CI.
 These fixtures are independent of the broad model-zoo dependency imports.
 """
 
+import hashlib
 import json
 from pathlib import Path
 
 import torch
 import torch.nn.functional as F
 from huggingface_hub import snapshot_download
+from huggingface_hub.errors import LocalEntryNotFoundError
 from transformers.dynamic_module_utils import get_class_from_dynamic_module
 
 REMOTE_MODELS = {
@@ -83,7 +86,21 @@ def tiny_config_overrides(key):
 
 def load_remote_classes(key):
     repo, revision = REMOTE_MODELS[key]
-    path = snapshot_download(repo, revision=revision, local_files_only=True)
+    try:
+        path = snapshot_download(repo, revision=revision, local_files_only=True)
+    except LocalEntryNotFoundError:
+        # Source-only, verbatim Apache-2.0 snapshots make Ouro CI independent
+        # of network access and host caches. Never fall back to another revision.
+        fixture = Path(__file__).resolve().parents[1] / "fixtures" / "ouro" / key
+        if not (fixture / "manifest.json").is_file():
+            raise
+        manifest = json.loads((fixture / "manifest.json").read_text())
+        if (manifest["repository"], manifest["revision"]) != (repo, revision):
+            raise RuntimeError(f"Wrong pinned fixture for {key}")
+        for name, digest in manifest["sha256"].items():
+            if Path(name).name != name or hashlib.sha256((fixture / name).read_bytes()).hexdigest() != digest:
+                raise RuntimeError(f"Corrupt pinned fixture: {key}/{name}")
+        path = str(fixture)
     raw = json.loads((Path(path) / "config.json").read_text())
     config_class = get_class_from_dynamic_module(raw["auto_map"]["AutoConfig"], path, local_files_only=True)
     model_class = get_class_from_dynamic_module(raw["auto_map"]["AutoModelForCausalLM"], path, local_files_only=True)
