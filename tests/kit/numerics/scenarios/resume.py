@@ -27,6 +27,8 @@ import os
 import tempfile
 from typing import Callable, Iterable, Optional, Tuple, Union
 
+import torch.distributed as dist
+
 import colossalai
 from colossalai.booster.mixed_precision import MixedPrecision
 from colossalai.testing import spawn
@@ -34,6 +36,7 @@ from colossalai.testing import spawn
 from ..capture.training import CHECKPOINT_PARTS, default_optimizer, prepare, run_steps
 from ..judge import AlignmentReport, Entry, judge_equal
 from ..trace import Trace
+from ._distributed import destroy_worker_process_group
 
 
 def traces(
@@ -159,24 +162,31 @@ def _run(
     load=None,
     save=None,
 ):
-    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port)
-    s = prepare(entry, total, seed)
-    trace = run_steps(
-        s,
-        plugin_fn(),
-        start,
-        stop,
-        mixed_precision,
-        optimizer_fn,
-        grad_seed,
-        load=load,
-        save=save,
-        parts=parts,
-        shard_optimizer=shard_optimizer,
-        role=role,
-    )
-    if rank == 0:
-        trace.save(path)
+    try:
+        colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port)
+        s = prepare(entry, total, seed)
+        trace = run_steps(
+            s,
+            plugin_fn(),
+            start,
+            stop,
+            mixed_precision,
+            optimizer_fn,
+            grad_seed,
+            load=load,
+            save=save,
+            parts=parts,
+            shard_optimizer=shard_optimizer,
+            role=role,
+        )
+        if rank == 0:
+            trace.save(path)
+        # Finish all work on every rank before tearing down the shared transport.
+        # Keep this out of finally: a failing peer may never reach a collective.
+        dist.barrier()
+    finally:
+        # Each spawned worker owns its group; release it before interpreter shutdown, even on errors.
+        destroy_worker_process_group()
 
 
 def _from_pretrained(entry, checkpoint: str):

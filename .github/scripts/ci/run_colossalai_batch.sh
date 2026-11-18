@@ -380,6 +380,10 @@ else
 fi
 
 export PYTHONPATH="${REPO}${PYTHONPATH:+:${PYTHONPATH}}"
+if [[ "${EXPECTED_GPUS}" -eq 0 ]]; then
+    export PYTHONPATH="${SCRIPT_DIR}/cpu_tracebacks:${PYTHONPATH}"
+    export COLOSSAL_CI_TRACEBACK_DIR="${RESULTS_ROOT}/tracebacks"
+fi
 export TORCH_CUDA_ARCH_LIST="${TORCH_CUDA_ARCH_LIST:-9.0}"
 export MAX_JOBS="${MAX_JOBS:-4}"
 # Single-process batches safely reuse the runner's warm cache; this keeps the

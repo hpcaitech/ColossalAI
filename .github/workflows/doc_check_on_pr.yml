@@ -9,6 +9,9 @@ on:
     paths:
       - "docs/**"
 
+permissions:
+  contents: read
+
 jobs:
   check-i18n:
     name: Check docs in diff languages
@@ -16,16 +19,19 @@ jobs:
       github.event.pull_request.draft == false &&
       github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' &&
       github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, ubuntu-latest]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     concurrency:
       group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-check-i18n
       cancel-in-progress: true
     steps:
-      - uses: actions/checkout@v2
-
-      - uses: actions/setup-python@v2
+      - uses: actions/checkout@v7
         with:
-          python-version: "3.9"
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.10"
 
       - run: python .github/workflows/scripts/check_doc_i18n.py -d docs/source
 
@@ -35,24 +41,38 @@ jobs:
       github.event.pull_request.draft == false &&
       github.event.pull_request.base.repo.full_name == 'hpcaitech/ColossalAI' &&
       github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: [self-hosted, ubuntu-latest]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     concurrency:
       group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-check-doc
       cancel-in-progress: true
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           path: "./ColossalAI"
           fetch-depth: 0
 
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           path: "./ColossalAI-Documentation"
           repository: "hpcaitech/ColossalAI-Documentation"
 
-      - uses: actions/setup-python@v2
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.10"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Yarn
+        run: npm install --global yarn@1.22.22
+
+      - name: Constrain documentation installs to CPU Torch
+        run: |
+          printf 'torch==2.5.1+cpu\n' > "${{ runner.temp }}/docs-constraints.txt"
 
       # we use the versions in the main branch as the guide for versions to display
       # checkout will give your merged branch
@@ -69,11 +89,17 @@ jobs:
           git config user.email 'github-actions@github.com'
 
       - name: Build docs
+        env:
+          PIP_CONSTRAINT: ${{ runner.temp }}/docs-constraints.txt
+          PIP_EXTRA_INDEX_URL: https://download.pytorch.org/whl/cpu
+          CUDA_VISIBLE_DEVICES: ""
+          BUILD_EXT: "0"
         run: |
           cache_dir=ColossalAI-Documentation/doc-build/.cache
-          mkdir $cache_dir
+          mkdir -p "$cache_dir"
           mv ColossalAI $cache_dir
           cd ColossalAI-Documentation
-          pip install -v ./doc-build/third_party/hf-doc-builder
+          # The vendored doc-builder imports requests without declaring it.
+          pip install -v requests ./doc-build/third_party/hf-doc-builder
           pip install -v ./doc-build
           bash ./scripts/build.sh

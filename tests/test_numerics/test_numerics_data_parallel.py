@@ -1,17 +1,20 @@
 import itertools
+from contextlib import nullcontext
 from functools import partial
 from types import SimpleNamespace
 
 import pytest
 import torch
+import torch.distributed as dist
 import torch.nn.functional as F
 from torch import nn
 
 from colossalai.accelerator import get_accelerator
 from colossalai.booster.plugin import LowLevelZeroPlugin, TorchDDPPlugin
-from colossalai.testing import rerun_if_address_is_in_use
+from colossalai.testing import free_port, rerun_if_address_is_in_use
 from tests.kit.numerics import NumericsSpec, TokenLoss, judge_relative_bound, relative_bound
-from tests.kit.numerics.scenarios import data_parallel
+from tests.kit.numerics.capture.training import default_optimizer
+from tests.kit.numerics.scenarios import data_parallel, resume
 
 GRADS = {f"grad/param/fc{i}.{p}" for i in (1, 2) for p in ("weight", "bias")}
 
@@ -236,3 +239,136 @@ def test_sharded_plugins_equivalent(plugin_fn, micro_batches):
 def test_gemini_accumulation_needs_its_flag():
     with pytest.raises(Exception, match="enable_gradient_accumulation"):
         data_parallel.check(ENTRY, _gemini_bf16, world_size=2, micro_batches=4)
+
+
+@pytest.mark.parametrize("scenario", [data_parallel, resume], ids=["data_parallel", "resume"])
+@pytest.mark.parametrize("failure", [None, "prepare", "train", "save"], ids=["success", "prepare", "train", "save"])
+@rerun_if_address_is_in_use()
+def test_worker_releases_process_group(scenario, failure, tmp_path, monkeypatch):
+    """Workers release real process groups after success or an error, preserving the original error."""
+    assert not dist.is_initialized()
+    path = tmp_path / "trace.safetensors"
+    barriers = []
+    real_barrier = dist.barrier
+
+    def barrier(*args, **kwargs):
+        assert path.exists(), "rank zero must finish saving before the final synchronization"
+        barriers.append(True)
+        return real_barrier(*args, **kwargs)
+
+    monkeypatch.setattr(dist, "barrier", barrier)
+    kwargs = dict(
+        rank=0,
+        world_size=1,
+        port=free_port(),
+        entry=ENTRY,
+        plugin_fn=TorchDDPPlugin,
+        mixed_precision=None,
+        seed=0,
+        grad_seed=0,
+        optimizer_fn=default_optimizer,
+        path=str(path),
+        role="test",
+    )
+    if scenario is data_parallel:
+        kwargs.update(micro_batches=1, token_weighted=False)
+        train_fn = "run_data_parallel"
+    else:
+        kwargs.update(total=1, start=0, stop=1, parts=(), shard_optimizer=False)
+        train_fn = "run_steps"
+
+    def fail(*args, **kwargs):
+        assert dist.is_initialized(), "the failure must happen after creating the process group"
+        raise RuntimeError(f"injected {failure} failure")
+
+    if failure == "save":
+        monkeypatch.setattr(scenario.Trace, "save", fail)
+    elif failure is not None:
+        monkeypatch.setattr(scenario, "prepare" if failure == "prepare" else train_fn, fail)
+
+    try:
+        with pytest.raises(RuntimeError, match=f"injected {failure} failure") if failure else nullcontext():
+            scenario._run(**kwargs)
+        assert not dist.is_initialized(), "the worker leaked its process group"
+        assert len(barriers) == (1 if failure is None else 0), "failed workers must not wait for peers"
+        if failure is None:
+            assert scenario.Trace.load(str(path)), "the worker must still save its training trace"
+    finally:
+        # Keep a failing regression from leaking its group into subsequent tests.
+        if dist.is_initialized():
+            dist.destroy_process_group()
+
+
+def _gloo_teardown_with_pending_callback(rank, rendezvous):
+    """Finish an asynchronous collective and its Python callback during teardown."""
+    import time
+    from datetime import timedelta
+
+    from tests.kit.numerics.scenarios._distributed import destroy_worker_process_group
+
+    dist.init_process_group(
+        "gloo", init_method="file://" + rendezvous, rank=rank, world_size=2, timeout=timedelta(seconds=20)
+    )
+    tensor = torch.ones(4)
+    if rank == 1:
+        # Keep rank zero's completion callback pending when cleanup begins.
+        time.sleep(1)
+    work = dist.all_reduce(tensor, async_op=True)
+    completed = []
+    if rank == 0:
+        future = work.get_future().then(lambda future: completed.append(True))
+    else:
+        work.wait()
+    del work
+    destroy_worker_process_group()
+    assert not dist.is_initialized()
+    if rank == 0:
+        assert completed == [True], "teardown returned before the Python completion callback finished"
+        assert future.done()
+    torch.testing.assert_close(tensor, torch.full((4,), 2.0))
+
+
+def test_gloo_teardown_releases_gil_for_pending_callback(tmp_path):
+    """A Python completion callback must not deadlock with Gloo's destructor."""
+    import os
+    import subprocess
+    import sys
+
+    command = (
+        "import sys; "
+        "from tests.test_numerics.test_numerics_data_parallel import _gloo_teardown_with_pending_callback; "
+        "_gloo_teardown_with_pending_callback(int(sys.argv[1]), sys.argv[2])"
+    )
+    processes = []
+    streams = []
+    try:
+        for rank in range(2):
+            stream = (tmp_path / f"rank-{rank}.log").open("w")
+            streams.append(stream)
+            processes.append(
+                subprocess.Popen(
+                    [sys.executable, "-c", command, str(rank), str(tmp_path / "rendezvous")],
+                    stdout=stream,
+                    stderr=subprocess.STDOUT,
+                    env={
+                        **os.environ,
+                        "CUDA_VISIBLE_DEVICES": "",
+                        "GLOO_SOCKET_IFNAME": "lo",
+                        "OMP_NUM_THREADS": "1",
+                        "MKL_NUM_THREADS": "1",
+                    },
+                )
+            )
+        for rank, process in enumerate(processes):
+            try:
+                code = process.wait(timeout=40)
+            except subprocess.TimeoutExpired:
+                pytest.fail(f"Gloo worker {rank} deadlocked during process-group teardown")
+            assert code == 0, (tmp_path / f"rank-{rank}.log").read_text()
+    finally:
+        for process in processes:
+            if process.poll() is None:
+                process.kill()
+            process.wait()
+        for stream in streams:
+            stream.close()
