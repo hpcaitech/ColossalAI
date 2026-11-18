@@ -232,7 +232,7 @@ Run the source-only CPU contracts from the repository root:
 
 ~~~bash
 CUDA_VISIBLE_DEVICES="" HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 \
-python -m pytest -q tests/test_model_zoo/test_ouro.py
+python -m pytest -q tests/test_model_zoo/test_ouro_model_zoo.py
 ~~~
 
 With two GPUs available, run the distributed and export regressions:

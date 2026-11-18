@@ -202,7 +202,7 @@ case "${BATCH}" in
             tests/test_booster/test_plugin/test_gemma4.py
             tests/test_booster/test_plugin/test_gemma4_alignment.py
             tests/test_booster/test_plugin/test_ouro.py
-            tests/test_model_zoo/test_ouro.py
+            tests/test_model_zoo/test_ouro_model_zoo.py
             tests/test_checkpoint_io/test_gemini_offload_export.py
             tests/test_booster/test_mixed_precision/test_bf16.py
             tests/test_checkpoint_io/test_low_level_zero_master_resume.py
