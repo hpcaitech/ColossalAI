@@ -1,4 +1,4 @@
-name: 💥 Proposal
+name: Proposal
 description: Propose a non-trivial change to Colossal-AI
 title: "[PROPOSAL]: "
 labels: [enhancement]
@@ -44,4 +44,4 @@ body:
 - type: markdown
   attributes:
     value: >
-      Thanks for contributing 🎉!
+      Thanks for contributing!
