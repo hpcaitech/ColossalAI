@@ -186,18 +186,20 @@ model_zoo.register(
 ```
 
 Pass the entry's model_zoo name and the plugin exactly as training code would build it. Plugins need
-`torch.distributed`, so run inside `colossalai.testing.spawn`:
+`torch.distributed`, so run inside `colossalai.testing.spawn`. `@worker` launches ColossalAI for the worker and
+releases its process group when it returns or raises; a worker that exits with its group alive can abort or hang on
+the way out (see `scenarios/_distributed.py`):
 
 ```python
-import colossalai
 from colossalai.booster.plugin import LowLevelZeroPlugin
 from colossalai.testing import spawn
 from tests.kit.numerics import judge
+from tests.kit.numerics.scenarios._distributed import worker
 from tests.kit.numerics.scenarios.independent_impl import blank_control, training_traces
 
 
+@worker
 def run(rank, world_size, port):
-    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port)
     blank_control("transformers_mixtral")
     plugin = LowLevelZeroPlugin(stage=2, precision="bf16")
     test, ref, truth = training_traces("transformers_mixtral", plugin, steps=3)
