@@ -310,6 +310,65 @@ if dist.get_world_size() > 1:
 
 2. When you use Shardformer to process classification models such as `GPT2ForSequenceClassification`, `ViTForImageClassification`, please ensure that the total number of labels should be integer multiple of tensor parallel size, otherwise Shardformer can't process the classifier layer correctly. A simple fix could be appending dummy labels in transformers config. This bug will be fixed in future version of Shardformer.
 
+## Explicit Attention Backends
+
+`ColoAttention.attention(q, k, v, backend="sdpa")` accepts dense `[B, H, S, D]`
+tensors and returns a tensor in the same layout. Explicit `fa2`, `fa3` and `sdpa`
+requests never fall back; `auto` selects a compatible implementation before
+execution. Omitting `backend` preserves the legacy mask and dispatch contract.
+The explicit API uses `is_causal` and an optional custom `attention_mask` (boolean
+True means allowed, floating masks are additive), rather than legacy mask enums.
+Every explicit backend must preserve this convention; adapters convert to their
+native mask convention. Fully masked query rows have zero output and contribute
+no gradient. This includes lower-right causal attention with `Sq > Skv`.
+Non-square causal requests require `causal_alignment="upper_left"` or
+`"lower_right"`; FA2/FA3 support only the latter for non-square inputs.
+
+`ColoAttention.attention_varlen` accepts packed Q `[Tq, Hq, D]` and K/V
+`[Tkv, Hkv, D]`, with separate `cu_seqlens_q`, `cu_seqlens_kv`, `max_seqlen_q`
+and `max_seqlen_kv`. Prefixes are host integer sequences or contiguous int32
+tensors on the input device. They start at zero and partition every token into
+nonempty samples; zero-length samples are rejected. For lengths
+`[3, 5]`, the prefix is `[0, 3, 8]`. Samples never attend across boundaries.
+By default, tensor value validation reads prefixes on the host. For previously
+validated device tensors, `validate=False` skips value reads in FA2/FA3 while
+retaining shape, dtype, device and sample-count checks. The caller then guarantees
+valid boundaries and maximum lengths. Such causal calls must explicitly specify
+alignment; FA2/FA3 require `lower_right` because unchecked lengths cannot be
+assumed equal. Host sequences are always validated and converted to device int32
+only for adapters that need tensors. Reuse prepared tensors across layers to avoid
+repeated conversions. SDPA reuses host boundaries, or reads them once for slicing;
+it remains a per-sample correctness path, not a fused varlen kernel. Dynamic packed
+fullgraph compilation is not guaranteed by this option.
+
+The explicit loader uses one internal backend registry: device-specific entries
+are tried in registration order, followed by generic entries such as SDPA. The
+built-in CUDA order remains FA3, FA2, SDPA. Adding a device backend does not require
+editing the shared selector; its adapter must implement the common contracts.
+
+FA3 is optional and uses the `flash_attn_3` training API from
+[`54b044c8`](https://github.com/Dao-AILab/flash-attention/tree/54b044c8cf897dfcc2577a665559d1bfda0bfc80/hopper).
+Install that revision's `hopper` package in an isolated, compatible CUDA/PyTorch
+environment. The adapter requires SM90 and FP16/BF16, with zero dropout and no
+arbitrary mask. An installed but broken extension propagates its import or kernel
+error. GPU/platform compatibility must be verified on the actual build.
+Importing Diffusers 0.35.2's attention dispatcher overwrites this FA3 operator's
+schema; the combined video path has been validated with Diffusers 0.36.0 instead.
+The explicit FA2 path requires `flash-attn>=2.1` and limits head dimensions to
+192 or less, avoiding version/device-dependent backward support above that size.
+Both explicit FA adapters currently require NVIDIA CUDA. Upstream FA2 also has
+ROCm implementations, but these require a separate capability policy and validation
+before being enabled here. FA3 accepts Tensor and `(output, softmax_lse)` returns;
+this does not guarantee compatibility with every historical FA3 build.
+
+Run CPU contract tests with `pytest tests/test_shardformer/test_layer/test_attention_backends.py -k 'not gpu'`.
+For strict single-GPU FA3 acceptance, use the existing batch runner:
+`bash .github/scripts/ci/run_colossalai_batch.sh 4f <gpu_index>`.
+It fails if CUDA or FA3 is unavailable and saves numerical results and profiler
+traces under `COLOSSAL_RESULTS`. The existing full-matrix workflow can select
+batch `4f` manually after its image includes compatible FA3. It is opt-in only,
+not part of the default matrix or standard Layer 2 batches (`2`, `4a`, `5`).
+
 ## How Shardformer Works
 
 ### Main Idea
