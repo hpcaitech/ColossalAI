@@ -1,9 +1,9 @@
-"""Batches and losses that model lines can use in their ``BenchmarkSpec`` beyond the default random token ids.
+"""Batches and losses that models can use in their ``BenchmarkSpec`` beyond the default random token ids.
 
 - ``PackedText``: real text from a dataset on the Hub, tokenized and packed into the fixed shape. A MoE layer routes
   each token by its content, so random token ids spread tokens over the experts unlike real text.
 - ``LatentVideo`` with ``flow_matching_loss`` and ``LatentTokens``: one training step of a video diffusion transformer
-  on latents, as a model line trains it with the VAE and text encoder run beforehand: noised latents, a timestep and
+  on latents, as such a model is trained with the VAE and text encoder run beforehand: noised latents, a timestep and
   text embeddings in, the flow-matching velocity out.
 
 All are dataclasses of plain values, so a spec using them can be sent to the measuring processes.

@@ -11,7 +11,7 @@ same model). A report lists whatever it does not cover, so that a missing number
 
 The code is four layers, one package each; a layer only uses the ones below it.
 
-| Layer | Package | Does | Model lines |
+| Layer | Package | Does | Model contributors |
 | --- | --- | --- | --- |
 | 1 | `config/` | what is measured: a model's `BenchmarkSpec`, the plugin configurations, one `Setup` | declare a `BenchmarkSpec` once per model |
 | 2 | `runner/` | runs one `Setup` once in fresh processes and records raw data; computes no metric | do not touch |
@@ -118,9 +118,8 @@ model_zoo.register(..., model_attribute=ModelAttribute(benchmark=benchmark))
 
 Measurements load the published weights by default (`--weights pretrained`): anything whose speed depends on values,
 like a MoE router's balance, is then as in training. Code names the repository and its revision, never a path: the files
-are found through the HuggingFace variables, on our machines the shared offline cache (`source
-/mnt/beegfs/ColossalAI/shared-cache/env.sh`), elsewhere the Hub. `HFModel(config=...)` writes the configuration out, so
-that random weights need no download (the Qwen3 entry does this: its published weights are not in the shared cache, so it is measured with `--weights random` there); `subfolder` picks a diffusers pipeline's component;
+are found through the HuggingFace variables, for example a shared offline cache (`HF_HUB_CACHE` and `HF_HUB_OFFLINE=1`), elsewhere the Hub. `HFModel(config=...)` writes the configuration out, so
+that random weights need no download (the Qwen3 entry does this); `subfolder` picks a diffusers pipeline's component;
 `trust_remote_code` runs a repository's own modeling code. A size given as a plain function has random weights only
 (`--weights random`), like the gated Llama 3.
 
@@ -135,13 +134,13 @@ tokenized and packed to the fixed shape: a MoE router needs real tokens) and, fo
 `LatentVideo`, `LatentTokens` and `flow_matching_loss`; a model whose sequence is set by its frames and resolution
 declares `searchable=("micro_batch",)`.
 
-A model that ColossalAI's line has not added to model_zoo yet can be measured from `entries.py` (benchmark-only
+A model that has no model_zoo entry yet can be measured from `entries.py` (benchmark-only
 entries, looked up after model_zoo): `qwen3_moe` (Qwen3-30B-A3B) and `wan2_2_ti2v` (the Wan2.2-TI2V-5B transformer at
-480×832, 81 frames). Their specs move into model_zoo when the lines add their entries; they are kept out of it until
+480×832, 81 frames). Their specs move into model_zoo when the models get their entries; they are kept out of it until
 then because other tests pick model_zoo entries by name substring.
 
-A model that gets an L4 report gives a FLOPs formula as `flops_fn(model, seq_len)`, in its own model_zoo file next to
-the `BenchmarkSpec`: the line knows its layers best (e.g. Gated DeltaNet, a MoE router), and MFU uses the formula.
+A model whose report is published gives a FLOPs formula as `flops_fn(model, seq_len)`, in its own model_zoo file next to
+the `BenchmarkSpec`: its contributors know its layers best (e.g. Gated DeltaNet, a MoE router), and MFU uses the formula.
 FLOPs are also counted automatically (see MFU below), but only as a check: the count sees the matmuls the reference
 implementation runs, not custom kernels, routing that depends on values, or which positions a mask tensor hides, and
 it is verified against formulas only for standard decoders. Every measurement checks the formula against the count and
@@ -150,10 +149,10 @@ sizes in CI. On a difference, check the formula first. If it is right, open a Gi
 numbers: either the counter has a gap that can be fixed (an attention it reads wrongly, a custom kernel with no
 registered FLOPs), or the model cannot be counted on the meta device (routing that depends on values). Such a model is
 counted instead in one extra, untimed step on the devices at the end of its measurement, with its real weights
-(`BenchmarkSpec.count_on_device`); only what neither count can see is checked by hand by the benchmark owners. Until then the report's warning cites the issue; a report with an
-unresolved warning is not a final L4 report.
+(`BenchmarkSpec.count_on_device`); only what neither count can see is checked by hand by the benchmark maintainers. Until then the report's warning cites the issue; a report with an
+unresolved warning is not a final report.
 Without a formula, MFU comes from the count alone and is not verified. A formula follows these conventions, so that
-MFU compares across lines:
+MFU compares across models:
 
 - model FLOPs per trained token: the matrix multiplications of one forward and backward, 2 FLOPs per multiply-add
   forward and twice that backward, i.e. 6 per weight per token (PaLM, appendix B);
@@ -168,7 +167,7 @@ MFU compares across lines:
 
 Build on `decoder_flops_per_token` (Llama-, Qwen3- and Mistral-style decoders) for the standard attention and MLP and
 add what is specific to the model. Where the count cannot run (a router whose dispatch depends on the values, a layer
-with no meta implementation), the formula is the only source and is reviewed by the benchmark owners.
+with no meta implementation), the formula is the only source and is reviewed by the benchmark maintainers.
 
 A model that can be computed in several ways (fused kernels, ColossalAI's `ColoAttention` or MoE layer, the plain
 PyTorch modules) declares the others as `implementations`: functions that take the model as built (the `"default"`

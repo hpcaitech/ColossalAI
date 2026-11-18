@@ -1,4 +1,4 @@
-"""What a model line declares once per model: ``BenchmarkSpec``, attached to a model_zoo entry through
+"""What a model's contributors declare once per model: ``BenchmarkSpec``, attached to a model_zoo entry through
 ``ModelAttribute.benchmark``.
 
 model_zoo imports this module, so it must not import ColossalAI. An implementation that swaps in ColossalAI modules
@@ -30,7 +30,7 @@ class HFModel:
     from its configuration alone, with random ones.
 
     The repository is named, never a path: files are found through the standard HuggingFace variables
-    (``HF_HUB_CACHE``, ``HF_HUB_OFFLINE``), on our machines the shared offline cache (``source`` its ``env.sh``),
+    (``HF_HUB_CACHE``, ``HF_HUB_OFFLINE``), e.g. a shared offline cache,
     elsewhere the Hub.
 
     Args:
@@ -63,7 +63,7 @@ class HFModel:
         where = (
             dict(revision=self.revision, subfolder=self.subfolder) if self.subfolder else dict(revision=self.revision)
         )
-        # offline (the shared cache): diffusers would otherwise ask the Hub for the list of files before loading
+        # offline: diffusers would otherwise ask the Hub for the list of files before loading
         from huggingface_hub import constants
 
         where["local_files_only"] = constants.HF_HUB_OFFLINE
@@ -148,7 +148,7 @@ class BenchmarkSpec:
         checkpointing_fn: ``checkpointing_fn(model, preserve_rng_state)`` turns on non-reentrant gradient
             checkpointing. Defaults to the model's own switch (``enable_checkpointing``).
         flops_fn: ``flops_fn(model, seq_len)`` is the model FLOPs per token from a closed formula, given the model built
-            on the meta device, e.g. ``metrics.compute.decoder_flops_per_token``. Required for an L4 report: MFU uses
+            on the meta device, e.g. ``metrics.compute.decoder_flops_per_token``. Required for a published report: MFU uses
             it, and the automatic count only checks it. Without one, MFU comes from the count and is flagged as not
             verified.
         flop_formulas: FLOPs of custom operators the automatic count cannot see otherwise, as
@@ -231,7 +231,7 @@ class BenchmarkSpec:
 
 def spec_of(entry: str) -> BenchmarkSpec:
     """The ``BenchmarkSpec`` that a model_zoo entry declares, or a benchmark-only entry (``entries.ENTRIES``) for a
-    model whose line has not added a model_zoo entry yet."""
+    model that has no model_zoo entry yet."""
     from tests.kit.model_zoo import model_zoo
 
     from ..entries import ENTRIES

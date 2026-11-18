@@ -7,7 +7,7 @@ A plugin that keeps the optimizer on the CPU (``PluginConfig.cpu_optimizer``: Ze
 ``HybridAdam`` too (``for_cpu``), as ColossalAI's users run it: its CPU Adam kernel, not PyTorch's generic AdamW,
 which spends most of the step on the CPU and would make the plugin look far slower than it is.
 
-An optimizer line adds its optimizer here, under the name ``--optimizer`` and ``--compare optimizer=...`` take, as a
+A new optimizer is added here, under the name ``--optimizer`` and ``--compare optimizer=...`` take, as a
 function of the parameters and the learning rate; one that needs parameter groups (e.g. Muon on the 2-D hidden
 weights and AdamW on the rest) builds them inside that function.
 """

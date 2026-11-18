@@ -91,8 +91,8 @@ CONFIGS: Dict[str, PluginConfig] = {
     "gemini_bf16": PluginConfig(partial(GeminiPlugin, precision="bf16"), "bf16"),
     "fsdp_fp32": PluginConfig(TorchFSDPPlugin, "fp32"),
     "fsdp_bf16": PluginConfig(partial(TorchFSDPPlugin, mixed_precision=FSDP_BF16), "bf16"),
-    # data parallel only, with the model's shardformer policy applied: what lines whose training uses
-    # HybridParallelPlugin measure (no tensor or pipeline parallelism in phase 2)
+    # data parallel only, with the model's shardformer policy applied: for models whose training uses
+    # HybridParallelPlugin (no tensor or pipeline parallelism)
     "hybrid_zero2_bf16": PluginConfig(
         partial(HybridParallelPlugin, tp_size=1, pp_size=1, zero_stage=2, precision="bf16"), "bf16", takes_policy=True
     ),

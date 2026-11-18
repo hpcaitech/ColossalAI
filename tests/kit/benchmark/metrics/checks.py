@@ -41,12 +41,12 @@ def flags(summary: Dict[str, Any], flops: Dict[str, Any]) -> List[str]:
         found.append(
             f"the FLOPs formula and the counted FLOPs differ by {flops['difference']:+.1%} (limit "
             f"{FLOPS_MISMATCH_LIMIT:.0%}): check the formula; if it is right, the count misses something, open an "
-            "issue and cite it here. Not a final L4 report until resolved"
+            "issue and cite it here. Not a final report until resolved"
         )
     if flops["source"] == COUNTED:
         found.append(
-            "no FLOPs formula: MFU comes from the automatic count alone and is not verified; an L4 report needs the "
-            "model line's formula"
+            "no FLOPs formula: MFU comes from the automatic count alone and is not verified; a published report needs "
+            "the model's formula"
         )
     if flops.get("unseen_masks"):
         found.append(

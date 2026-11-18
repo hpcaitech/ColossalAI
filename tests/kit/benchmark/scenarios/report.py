@@ -1,4 +1,4 @@
-"""Report: the JSON a scenario writes, and the one Markdown template every model line uses.
+"""Report: the JSON a scenario writes, and the one Markdown template every model uses.
 
     python -m tests.kit.benchmark.scenarios.report result.json > result.md
     python -m tests.kit.benchmark.scenarios.report h20.json --against 910b2.json --out h20-vs-910b2.json

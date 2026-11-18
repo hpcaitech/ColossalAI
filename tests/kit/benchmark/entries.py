@@ -1,5 +1,5 @@
-"""Benchmark-only entries: models measured before their line has added a model_zoo entry. ``config.model.spec_of``
-looks a name up in model_zoo first, then here. When the line adds its model_zoo entry, its ``BenchmarkSpec`` moves
+"""Benchmark-only entries: models measured before they have a model_zoo entry. ``config.model.spec_of``
+looks a name up in model_zoo first, then here. When a model_zoo entry is added for the model, its ``BenchmarkSpec`` moves
 there and the entry here is removed.
 
 They are kept out of model_zoo because other tests select model_zoo entries by substring (``"diffusers"``,
@@ -29,7 +29,7 @@ FINEWEB_EDU = dict(
 WAN22_TI2V_480P = LatentVideo(channels=48, frames=21, height=30, width=52, patch=(1, 2, 2), text_len=512, text_dim=4096)
 
 ENTRIES: Dict[str, BenchmarkSpec] = {
-    # 2A: Qwen3-MoE with its published weights and real text, so that the router balances the experts as in
+    # Qwen3-MoE with its published weights and real text, so that the router balances the experts as in
     # training; FLOPs are counted on the devices, where the routing runs
     "qwen3_moe": BenchmarkSpec(
         models={
@@ -45,7 +45,7 @@ ENTRIES: Dict[str, BenchmarkSpec] = {
         flops_fn=moe_decoder_flops_per_token,
         count_on_device=True,
     ),
-    # 2F: the Wan2.2-TI2V-5B diffusion transformer on latents; the FLOPs formula is 2F's to write
+    # the Wan2.2-TI2V-5B diffusion transformer on latents; no FLOPs formula yet
     "wan2_2_ti2v": BenchmarkSpec(
         models={
             "5b": HFModel(WAN22_TI2V, WAN22_TI2V_REVISION, "diffusers.WanTransformer3DModel", subfolder="transformer")

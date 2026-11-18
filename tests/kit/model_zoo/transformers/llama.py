@@ -74,7 +74,7 @@ if HAS_LLAMA:
 
     # Real sizes for benchmarking, from the config.json of meta-llama/Llama-3.2-1B and meta-llama/Llama-3.1-8B
     # (rope scaling left out: it changes no shape and no FLOP). Random weights only: the repositories are gated and
-    # not in the shared cache
+    # not downloaded by the tests
     LLAMA3 = dict(
         vocab_size=128256,
         num_key_value_heads=8,

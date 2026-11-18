@@ -1,4 +1,4 @@
-"""Layer 1, config: what is measured. ``model`` is what a model line declares once per model; ``plugins`` the plugins
+"""Layer 1, config: what is measured. ``model`` is what a model's contributors declare once per model; ``plugins`` the plugins
 and precisions to measure under; ``setup`` one measurement's conditions.
 
 Only ``model`` is imported here: model_zoo imports this package, and ``plugins`` pulls in ColossalAI.
