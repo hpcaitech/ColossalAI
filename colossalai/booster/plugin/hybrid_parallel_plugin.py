@@ -41,6 +41,7 @@ from colossalai.shardformer.policies.base_policy import Policy
 from colossalai.shardformer.shard.shard_config import SUPPORT_SP_MODE
 from colossalai.tensor.colo_parameter import ColoParameter
 from colossalai.tensor.d_tensor.api import is_customized_distributed_tensor, is_distributed_tensor
+from colossalai.tensor.moe_tensor.grad_sync import GradSyncSpec
 from colossalai.tensor.param_op_hook import ColoParamOpHookManager
 from colossalai.zero.low_level import LowLevelZeroOptimizer
 from colossalai.zero.low_level.zero_hook import ZeroOpHook, wait_all_gather_handle
@@ -698,6 +699,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
         overlap_allgather: bool = False,
         fp8_communication: bool = False,
         grad_norm_process_group: Optional[ProcessGroup] = None,
+        grad_sync_plan: Optional[Dict[torch.nn.Parameter, GradSyncSpec]] = None,
     ):
         self.model = model
         self.param_info = param_info
@@ -730,6 +732,7 @@ class HybridParallelZeroOptimizer(LowLevelZeroOptimizer):
             fp8_communication=fp8_communication,
             backward_context=model._hook_context,
             grad_norm_process_group=grad_norm_process_group,
+            grad_sync_plan=grad_sync_plan,
         )
 
     def sync_dp_grads(self):

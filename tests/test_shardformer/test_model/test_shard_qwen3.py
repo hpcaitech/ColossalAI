@@ -236,7 +236,7 @@ def check_forward_backward(model_fn, data_gen_fn, output_transform_fn, loss_fn, 
     ],
 )
 def run_qwen3_test(test_config):
-    sub_model_zoo = model_zoo.get_sub_registry("transformers_qwen3")
+    sub_model_zoo = model_zoo.get_sub_registry("transformers_qwen3", exclude="transformers_qwen3_moe")
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         try:
@@ -285,7 +285,7 @@ def run_qwen3_test(test_config):
     ],
 )
 def run_qwen3_3d_test(test_config):
-    sub_model_zoo = model_zoo.get_sub_registry("transformers_qwen3")
+    sub_model_zoo = model_zoo.get_sub_registry("transformers_qwen3", exclude="transformers_qwen3_moe")
 
     for name, (model_fn, data_gen_fn, output_transform_fn, loss_fn, _) in sub_model_zoo.items():
         try:

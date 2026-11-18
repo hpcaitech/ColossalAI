@@ -81,7 +81,10 @@ case "${BATCH}" in
             tests/test_benchmark/test_benchmark_search.py
             tests/test_benchmark/test_benchmark_scaling.py
             tests/test_lazy/test_chatglm_cpu.py
+            tests/test_moe/test_ep_moe_layer_cpu.py
             tests/test_numerics/test_numerics_acceptance.py
+            tests/test_moe/test_ep_moe_layer_vs_hf.py
+            tests/test_moe/test_grad_sync_plan.py
             tests/test_numerics/test_numerics_core.py
             tests/test_model_zoo/test_gemma4.py
             tests/test_numerics/test_numerics_data_parallel.py
@@ -92,6 +95,7 @@ case "${BATCH}" in
             tests/test_pipeline/test_pipeline_utils/test_whisper_pipeline_utils.py
             tests/test_pipeline/test_schedule/test_pipeline_schedule_utils.py
             tests/test_shardformer/test_layer/test_attention_backends.py
+            tests/test_shardformer/test_qwen3_moe_policy_cpu.py
             tests/test_tensor/test_dtensor/test_dtensor_sharding_spec.py
             tests/test_tensor/test_shape_consistency.py
             tests/test_tensor/test_sharding_spec.py
