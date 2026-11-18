@@ -19,6 +19,7 @@ TESTS=(
     tests/test_numerics/test_numerics_data_parallel.py
     tests/test_numerics/test_numerics_independent_impl.py
     tests/test_numerics/test_numerics_resume.py
+    tests/test_optimizer/test_dist_muon.py
     tests/test_optimizer/test_lr_scheduler.py
     tests/test_optimizer/test_muon.py
     tests/test_pipeline/test_pipeline_utils/test_t5_pipeline_utils.py
