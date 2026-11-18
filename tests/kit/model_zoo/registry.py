@@ -2,6 +2,7 @@
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Union
 
+from tests.kit.benchmark.config.model import BenchmarkSpec
 from tests.kit.numerics.spec import NumericsSpec
 
 __all__ = ["ModelZooRegistry", "ModelAttribute", "model_zoo"]
@@ -17,11 +18,14 @@ class ModelAttribute:
         has_stochastic_depth_prob (bool): Whether the model contains stochastic depth probability. Often seen in the torchvision models.
         numerics (NumericsSpec): How to check the model against its reference implementation. Models without one are
             not part of whole-model alignment. See ``tests/kit/numerics/spec.py``.
+        benchmark (BenchmarkSpec): How to benchmark the model at its real sizes. Models without one are not
+            benchmarked. See ``tests/kit/benchmark/config/model.py``.
     """
 
     has_control_flow: bool = False
     has_stochastic_depth_prob: bool = False
     numerics: Optional[NumericsSpec] = None
+    benchmark: Optional[BenchmarkSpec] = None
 
 
 class ModelZooRegistry(dict):

@@ -1,4 +1,5 @@
 from .flash_attention_dao_cuda import FlashAttentionDaoCudaExtension
+from .flash_attention_dao_v3_cuda import FlashAttentionDaoV3CudaExtension
 from .flash_attention_npu import FlashAttentionNpuExtension
 from .flash_attention_sdpa_cuda import FlashAttentionSdpaCudaExtension
 
@@ -11,4 +12,9 @@ except:
     HAS_FLASH_ATTN = False
 
 
-__all__ = ["FlashAttentionDaoCudaExtension", "FlashAttentionSdpaCudaExtension", "FlashAttentionNpuExtension"]
+__all__ = [
+    "FlashAttentionDaoCudaExtension",
+    "FlashAttentionDaoV3CudaExtension",
+    "FlashAttentionSdpaCudaExtension",
+    "FlashAttentionNpuExtension",
+]

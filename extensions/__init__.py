@@ -1,6 +1,7 @@
 from .pybind.cpu_adam import CpuAdamArmExtension, CpuAdamX86Extension
 from .pybind.flash_attention import (
     FlashAttentionDaoCudaExtension,
+    FlashAttentionDaoV3CudaExtension,
     FlashAttentionNpuExtension,
     FlashAttentionSdpaCudaExtension,
 )
@@ -20,6 +21,7 @@ ALL_EXTENSIONS = [
     ScaledMaskedSoftmaxCudaExtension,
     ScaledUpperTriangleMaskedSoftmaxCudaExtension,
     FlashAttentionDaoCudaExtension,
+    FlashAttentionDaoV3CudaExtension,
     FlashAttentionSdpaCudaExtension,
     FlashAttentionNpuExtension,
 ]
@@ -34,6 +36,7 @@ __all__ = [
     "ScaledMaskedSoftmaxCudaExtension",
     "ScaledUpperTriangleMaskedSoftmaxCudaExtension",
     "FlashAttentionDaoCudaExtension",
+    "FlashAttentionDaoV3CudaExtension",
     "FlashAttentionSdpaCudaExtension",
     "FlashAttentionNpuExtension",
 ]
