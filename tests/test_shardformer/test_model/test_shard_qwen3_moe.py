@@ -38,7 +38,7 @@ def _check_parameters(reference_model, actual_model, actual_optimizer, zero_stag
     errors = []
     for name, param in actual_model.unwrap().named_parameters():
         reference_param = reference_params[name]
-        owner_name = name.rsplit(".", 2)[0]
+        owner_name = name.rsplit(".", 1)[0]
         owner = actual_modules.get(owner_name)
         expected = _reference_grad(name, reference_param.grad, owner)
         if zero_stage == 0:
@@ -65,7 +65,7 @@ def _check_weights(reference_model, actual_model, precision):
     atol, rtol = _tolerances(precision)
     for name, param in actual_model.unwrap().named_parameters():
         expected = reference_params[name].detach()
-        owner = actual_modules.get(name.rsplit(".", 2)[0])
+        owner = actual_modules.get(name.rsplit(".", 1)[0])
         if ".mlp.experts." in name:
             local = owner.local_expert_range
             expected = expected[local.start : local.stop]
