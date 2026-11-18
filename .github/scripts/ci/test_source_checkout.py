@@ -1,9 +1,7 @@
-import hashlib
 import os
 import shlex
 import shutil
 import subprocess
-import tarfile
 import tempfile
 import textwrap
 import unittest
@@ -43,8 +41,6 @@ class SourceCheckoutTests(unittest.TestCase):
         self.sha = self.git("-C", str(self.origin), "rev-parse", "HEAD")
         self.environment = self.root / "github-env"
         self.environment.touch()
-        self.output = self.root / "github-output"
-        self.output.touch()
 
     @staticmethod
     def git(*args):
@@ -64,7 +60,6 @@ class SourceCheckoutTests(unittest.TestCase):
                 "CI_SOURCE_SHA": self.sha,
                 "RUNNER_TEMP": str(self.root),
                 "GITHUB_ENV": str(self.environment),
-                "GITHUB_OUTPUT": str(self.output),
                 **environment,
             },
             capture_output=True,
@@ -72,52 +67,33 @@ class SourceCheckoutTests(unittest.TestCase):
             timeout=30,
         )
 
-    def package(self, sha=None):
-        # Run the actual producer shell against a local Git server fixture.
-        # GitHub artifact transport is replaced only by a byte-for-byte copy.
-        script = self.step_script("Package the exact GitHub source commit")
+    def checkout(self, sha=None, wrapper=None):
+        # Exercise the production shell against a real local Git server fixture.
+        script = self.step_script("Fetch and verify the exact source commit")
         script = script.replace('"https://github.com/$GITHUB_REPOSITORY.git"', shlex.quote(self.origin.as_uri()))
-        result = self.run_script(script, CI_SOURCE_SHA=sha or self.sha)
-        if result.returncode == 0:
-            outputs = dict(line.split("=", 1) for line in self.output.read_text().splitlines())
-            self.download = self.root / "download"
-            self.download.mkdir()
-            self.archive = self.download / "source.tar.gz"
-            shutil.copyfile(outputs["archive"], self.archive)
-            self.archive_sha256 = outputs["archive_sha256"]
-        return result
-
-    def restore(self, sha=None):
-        return self.run_script(
-            self.step_script("Restore and verify the exact source commit"),
-            CI_SOURCE_SHA=sha or self.sha,
-            CI_SOURCE_ARTIFACT_DIR=str(self.download),
-            SOURCE_ARCHIVE_SHA256=self.archive_sha256,
-        )
-
-    def alter_archive(self, mutate):
-        unpacked = self.root / "unpacked"
-        unpacked.mkdir()
-        # Use the same tar executable as production, including on runners
-        # whose system Python predates tarfile extraction filters.
-        subprocess.run(["tar", "-xzf", str(self.archive), "-C", str(unpacked)], check=True)
-        mutate(unpacked / "repo")
-        with tarfile.open(self.archive, "w:gz") as archive:
-            archive.add(unpacked / "repo", arcname="repo")
-        # Simulate an intact transport carrying an incorrect producer payload.
-        self.archive_sha256 = hashlib.sha256(self.archive.read_bytes()).hexdigest()
+        environment = {}
+        if wrapper is not None:
+            binary = self.root / "bin"
+            binary.mkdir()
+            executable = binary / "git"
+            executable.write_text(
+                "#!/usr/bin/env python3\nimport os, subprocess, sys\n"
+                + "real_git = "
+                + repr(shutil.which("git"))
+                + "\n"
+                + textwrap.dedent(wrapper)
+            )
+            executable.chmod(0o755)
+            environment["PATH"] = str(binary) + os.pathsep + os.environ["PATH"]
+        return self.run_script(script, CI_SOURCE_SHA=sha or self.sha, **environment)
 
     def assert_rejected(self, result):
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(self.environment.read_text(), "")
 
     def test_pinned_checkout_retains_git_metadata_in_private_copy(self):
-        packaged = self.package()
-        self.assertEqual(packaged.returncode, 0, packaged.stderr)
-        with tarfile.open(self.archive) as archive:
-            self.assertTrue(all(name == "repo/.git" or name.startswith("repo/.git/") for name in archive.getnames()))
-        restored = self.restore()
-        self.assertEqual(restored.returncode, 0, restored.stderr)
+        checked_out = self.checkout()
+        self.assertEqual(checked_out.returncode, 0, checked_out.stderr)
         source = Path(self.environment.read_text().strip().split("=", 1)[1])
         private = self.root / "private-copy"
         shutil.copytree(source, private, symlinks=True)
@@ -140,41 +116,57 @@ class SourceCheckoutTests(unittest.TestCase):
         self.assertIn(
             "tracked.txt", self.git("-C", str(private), "-c", "protocol.allow=never", "status", "--porcelain")
         )
-        self.assertIn("Archive SHA256:", restored.stdout)
+        self.assertIn("Source commit: " + self.sha, checked_out.stdout)
 
     def test_missing_commit_never_falls_back_to_current_branch(self):
-        self.assert_rejected(self.package("0" * 40))
-        self.assertEqual(self.output.read_text(), "")
+        self.assert_rejected(self.checkout("0" * 40))
 
-    def test_restore_rejects_a_different_commit(self):
-        self.assertEqual(self.package().returncode, 0)
-        self.assert_rejected(self.restore("0" * 40))
+    def test_invalid_commit_is_rejected_before_fetch(self):
+        self.assert_rejected(self.checkout("main"))
+        self.assertEqual(list(self.root.glob("colossalai-source.*")), [])
 
-    def test_corrupted_transport_fails_digest_check_before_extraction(self):
-        self.assertEqual(self.package().returncode, 0)
-        with self.archive.open("ab") as archive:
-            archive.write(b"corrupted transport")
-        self.assert_rejected(self.restore())
-        self.assertFalse((self.download / "repo").exists())
-
-    def test_archive_rejects_uncommitted_working_tree_payload(self):
-        self.assertEqual(self.package().returncode, 0)
-        self.alter_archive(lambda repo: (repo / "tracked.txt").write_text("not the pinned source\n"))
-        restored = self.restore()
-        self.assert_rejected(restored)
-        self.assertIn("must contain only Git metadata and objects", restored.stderr)
-
-    def test_missing_git_objects_are_rejected(self):
-        self.assertEqual(self.package().returncode, 0)
-        self.alter_archive(lambda repo: shutil.rmtree(repo / ".git/objects"))
-        self.assert_rejected(self.restore())
-
-    def test_repositories_using_external_alternates_are_rejected(self):
-        self.assertEqual(self.package().returncode, 0)
-        self.alter_archive(
-            lambda repo: (repo / ".git/objects/info/alternates").write_text(str(self.origin / ".git/objects"))
+    def test_transient_fetch_failure_retries_the_same_commit(self):
+        marker = self.root / "fetch-attempts"
+        result = self.checkout(
+            wrapper=f"""
+            from pathlib import Path
+            if 'fetch' in sys.argv:
+                path = Path({str(marker)!r})
+                previous = path.read_text() if path.exists() else ''
+                path.write_text(previous + sys.argv[-1] + '\\n')
+                if not previous:
+                    sys.exit(1)
+            os.execv(real_git, [real_git, *sys.argv[1:]])
+        """
         )
-        self.assert_rejected(self.restore())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(marker.read_text().splitlines(), [self.sha, self.sha])
+
+    def test_fetched_commit_mismatch_is_rejected(self):
+        result = self.checkout(
+            wrapper="""
+            if sys.argv[-2:] == ['rev-parse', 'FETCH_HEAD']:
+                print('0' * 40)
+                sys.exit(0)
+            os.execv(real_git, [real_git, *sys.argv[1:]])
+        """
+        )
+        self.assert_rejected(result)
+
+    def test_modified_checkout_is_rejected(self):
+        result = self.checkout(
+            wrapper="""
+            from pathlib import Path
+            if 'checkout' in sys.argv:
+                subprocess.run([real_git, *sys.argv[1:]], check=True)
+                repo = Path(sys.argv[sys.argv.index('-C') + 1])
+                (repo / 'tracked.txt').write_text('uncommitted modification')
+                sys.exit(0)
+            os.execv(real_git, [real_git, *sys.argv[1:]])
+        """
+        )
+        self.assert_rejected(result)
+        self.assertIn("differs from the pinned commit", result.stderr)
 
 
 if __name__ == "__main__":
