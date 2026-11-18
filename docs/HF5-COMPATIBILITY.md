@@ -141,7 +141,7 @@ Recreate the factory from the pinned original snapshot in a fresh process.
 AutoModel alone still selects the original remote class, not this adapter.
 Use save_pretrained/state_dict, not whole-model Python pickling.
 The initial 2D1 validation used tiny sharded safetensors roundtrips to test
-construction/loading and parameter keys. See the 2D4 report for Ouro original-weight checks.
+construction/loading and parameter keys. See the Ouro 2D4 section below for original-weight checks.
 
 ### Support boundaries and evidence
 
@@ -179,19 +179,18 @@ CE only; this is not the full 2D2 diffusion objective.
 
 Prepare the pinned config/code snapshots before testing; no weight download is
 needed. Tests skip if snapshots are absent unless COLOSSALAI_REQUIRE_REMOTE_MODELS=1.
-The persistent runner requires all five snapshots, records source hashes,
-hides GPUs, and preserves the pytest failure status:
+From the repository root, run the adapter tests and existing D4 basic-policy
+regressions in an environment with the validated dependencies installed:
 
 ```bash
-source /home/wzj/venv/bin/activate
-bash /workspace/ColossalAI/scripts/phase2/2d1/run.sh adapters
+CUDA_VISIBLE_DEVICES="" HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 \
+COLOSSALAI_REQUIRE_REMOTE_MODELS=1 \
+python -m pytest -v --tb=short \
+  tests/test_shardformer/test_model/test_shard_remote_models.py \
+  tests/test_shardformer/test_hf5_compat/test_d4_compat.py
 ```
 
-Logs are written to /results/2d1/. The runner also executes the existing D4
-basic-policy regression suite. Original 2D1 reconnaissance scripts remain
-available and continue to expose the unadapted Ouro construction failure.
-
-Validation on 2026-10-28: **105 passed, 0 failed, 0 skipped**. Log: /results/2d1/adapters-20261028-121109-MVBu0Z.log; JUnit: /results/2d1/adapters-validation-20261028-1212.xml.
+Validation on 2026-10-28: **105 passed, 0 failed, 0 skipped** (CPU / FP32 / tiny).
 
 ### Ouro 2D4: repeated-layer data-parallel training
 
@@ -229,6 +228,31 @@ Tests include verbatim, hash-checked Apache-2.0 Ouro source/config fixtures.
 They need no network or pretrained weights. Original-weight smoke tests use
 the separately prepared shared cache and are not included in normal CI.
 
-Reproduction, exact results, logs and remaining boundaries:
-[scripts/phase2/2d4](../scripts/phase2/2d4/README.md) and
-[2D4 results](../scripts/phase2/2d4/RESULTS.md).
+Run the source-only CPU contracts from the repository root:
+
+~~~bash
+CUDA_VISIBLE_DEVICES="" HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 \
+python -m pytest -q tests/test_model_zoo/test_ouro.py
+~~~
+
+With two GPUs available, run the distributed and export regressions:
+
+~~~bash
+HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 python -m pytest -q \
+  tests/test_booster/test_plugin/test_ouro.py \
+  tests/test_checkpoint_io/test_gemini_offload_export.py
+~~~
+
+Development-container validation on 2026-11-18 used PyTorch 2.13.0+cu130,
+Transformers 5.17.0 and two H20 GPUs. The CPU regressions passed 141/141;
+the Ouro-only CPU tests also passed 14/14 with an empty HF cache.
+All 80 distinct GPU acceptance cases have passing records: the initial batch
+passed 79 and hit one TCPStore port collision before model construction;
+a targeted rerun of four related cases passed. Existing Gemini master/resume
+regressions passed 16/16.
+
+Both original-size Ouro snapshots passed strict full-weight loading, bitwise
+forward logits/loss comparison and one single-GPU BF16 ZeRO-2 training update
+with finite gradients and checkpoint recomputation (batch 1, sequence 32,
+four loop iterations). These smoke checks do not establish full-size gradient
+L2 alignment, long-context training, convergence or performance.

@@ -12,5 +12,6 @@ notices remain in the Python sources; the original model cards declare the
 license. See LICENSE for the Apache 2.0 terms.
 
 Do not format or adapt these files. Compatibility changes belong in
-colossalai/shardformer/modeling/ouro.py. Regenerate fixtures from the fixed
-offline snapshots with scripts/phase2/2d4/prepare_fixtures.py.
+colossalai/shardformer/modeling/ouro.py. To regenerate a fixture, copy the
+files listed in its manifest verbatim from the exact upstream revision above,
+then recompute and verify every SHA256 entry. Do not include tensor weights.
