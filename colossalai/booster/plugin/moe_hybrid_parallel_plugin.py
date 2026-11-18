@@ -436,7 +436,7 @@ class MoeHybridParallelPlugin(HybridParallelPlugin):
 
         # TODO: Support Galore + ZeRO
         # Replace with distributed implementation if exists
-        optimizer = cast_to_distributed(optimizer)
+        optimizer = cast_to_distributed(optimizer, lr_scheduler)
 
         if not isinstance(model, ModelWrapper):
             use_ddp = (self.dp_size > 1 and self.pp_size == 1 and self.zero_stage == 0) or (
