@@ -187,3 +187,32 @@ python -m pytest -v --tb=short \
 ```
 
 Validation on 2026-10-28: **105 passed, 0 failed, 0 skipped** (CPU / FP32 / tiny).
+
+### Diffusion objective helpers (2D2)
+
+The shared helpers in colossalai.nn.diffusion and colossalai.nn.loss.diffusion
+add random per-sequence mask probabilities, LLaDA's inverse-probability weighted
+per-answer objective, a separate dFactory same-position masked-token CE, and a
+dense doubled-sequence block-diffusion attention layout. They do not alter the
+remote modeling classes or expand the policies' parallel/optimization support.
+
+The 2D2 suite compares the official pinned dFactory mask/noise/loss with the shared
+implementation and checks CPU FP32 tiny LLaDA/LLaDA2 logits, all parameter
+gradients, and updates. Block inputs require explicit position_ids and a 4D
+additive mask, and are tested on the two LLaDA2 snapshots, not LLaDA-8B.
+The LLaDA2.1/2.2 token-editing objectives, original-weight diffusion training,
+GPU BF16, offload, and distributed LLaDA acceptance remain separate 2D3/2D5 work.
+
+Run the shared objective tests and optional cached-model integration tests:
+
+~~~bash
+python -m pytest -q tests/test_diffusion/test_objective.py
+COLOSSALAI_REQUIRE_REMOTE_MODELS=1 HF_HUB_OFFLINE=1 \
+python -m pytest -q tests/test_diffusion/test_remote_models.py
+~~~
+
+The integration tests require the pinned official source snapshots in the local
+Hugging Face cache. Only the source-independent objective tests enter CPU CI.
+The weighted objective uses inverse mask probability and normalizes by all
+target tokens per sequence; masked-token CE instead averages only the sampled
+positions. These objectives are intentionally separate.
