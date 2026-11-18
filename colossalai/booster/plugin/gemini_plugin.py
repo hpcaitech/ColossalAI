@@ -668,8 +668,8 @@ class GeminiPlugin(DPPluginBase):
     ) -> Tuple[nn.Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
         if isinstance(optimizer, Muon):
             raise NotImplementedError(
-                "GeminiPlugin does not support Muon: its chunks split matrices at arbitrary boundaries. "
-                "Use LowLevelZeroPlugin (ZeRO stage 1 or 2) or TorchDDPPlugin."
+                f"GeminiPlugin does not support {type(optimizer).__name__}: its chunks split matrices at arbitrary "
+                "boundaries. Use LowLevelZeroPlugin (ZeRO stage 1 or 2) or TorchDDPPlugin."
             )
         params_info = get_param_info(optimizer)
         if not isinstance(model, ModelWrapper):
