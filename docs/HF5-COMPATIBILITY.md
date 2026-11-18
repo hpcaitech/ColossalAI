@@ -175,16 +175,15 @@ CE only; this is not the full 2D2 diffusion objective.
 
 Prepare the pinned config/code snapshots before testing; no weight download is
 needed. Tests skip if snapshots are absent unless COLOSSALAI_REQUIRE_REMOTE_MODELS=1.
-The persistent runner requires all five snapshots, records source hashes,
-hides GPUs, and preserves the pytest failure status:
+From the repository root, run the adapter tests and existing D4 basic-policy
+regressions in an environment with the validated dependencies installed:
 
 ```bash
-source /home/wzj/venv/bin/activate
-bash /workspace/ColossalAI/scripts/phase2/2d1/run.sh adapters
+CUDA_VISIBLE_DEVICES="" HF_HUB_OFFLINE=1 HF_DATASETS_OFFLINE=1 \
+COLOSSALAI_REQUIRE_REMOTE_MODELS=1 \
+python -m pytest -v --tb=short \
+  tests/test_shardformer/test_model/test_shard_remote_models.py \
+  tests/test_shardformer/test_hf5_compat/test_d4_compat.py
 ```
 
-Logs are written to /results/2d1/. The runner also executes the existing D4
-basic-policy regression suite. Original 2D1 reconnaissance scripts remain
-available and continue to expose the unadapted Ouro construction failure.
-
-Validation on 2026-10-28: **105 passed, 0 failed, 0 skipped**. Log: /results/2d1/adapters-20261028-121109-MVBu0Z.log; JUnit: /results/2d1/adapters-validation-20261028-1212.xml.
+Validation on 2026-10-28: **105 passed, 0 failed, 0 skipped** (CPU / FP32 / tiny).
