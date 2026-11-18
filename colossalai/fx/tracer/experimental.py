@@ -8,6 +8,7 @@ import torch
 from torch.fx import Graph, Node, Proxy, Tracer
 from torch.utils._pytree import tree_map
 
+from colossalai.accelerator import get_accelerator
 from colossalai.fx import ColoGraphModule, compatibility, is_compatible_with_meta
 from colossalai.fx.tracer._tracer_utils import is_element_in_list
 from colossalai.fx.tracer.bias_addition_patch import func_to_func_dict, method_to_func_dict, module_to_func_dict
@@ -57,7 +58,7 @@ def _truncate_suffix(s: str):
 
 
 def default_device():
-    return torch.device("cuda:0") if torch.cuda.is_available() else torch.device("cpu")
+    return get_accelerator().get_current_device()
 
 
 @compatibility(is_backward_compatible=False)
