@@ -15,10 +15,16 @@ def get_temp_total_chunk_on_cuda(chunk: Chunk, dtype: torch.dtype):
     if chunk.is_gathered:
         return chunk.cuda_global_chunk
 
-    if chunk.cuda_shard is not None:
-        shard_temp = chunk.cuda_shard
+    # CPU offload delays the working shard refresh until the next forward.
+    # An export between optimizer.step() and that forward must use the updated
+    # master shard, cast below to the requested export dtype. Do not move or
+    # synchronize the live working chunk just to take a snapshot.
+    source_chunk = chunk if chunk.optim_sync_flag else chunk.paired_chunk
+    assert source_chunk is not None
+    if source_chunk.cuda_shard is not None:
+        shard_temp = source_chunk.cuda_shard
     else:
-        shard_temp = chunk.cpu_shard.to(get_accelerator().get_current_device())
+        shard_temp = source_chunk.cpu_shard.to(get_accelerator().get_current_device())
 
     shard_temp = shard_temp.to(dtype)
 
