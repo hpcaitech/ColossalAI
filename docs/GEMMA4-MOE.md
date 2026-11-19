@@ -8,6 +8,10 @@ an EP group. Expert parameters are replicated, without EP gradient tags or scali
 
 The adapter keeps the original `gate_up_proj` and `down_proj` Parameter objects and
 HF checkpoint keys. Optimizers created before adaptation retain both expert tensors.
+Gemma's combine casts each weighted contribution to the residual dtype and adds them
+in increasing expert-id order. The adapter preserves that native order with top-k
+additions, while sharing token dispatch and both grouped GEMMs. The generic FP32
+sum/cast-once combine otherwise changes low-precision multi-step training.
 CPU execution explicitly uses `ReferenceExperts`; CUDA uses `GroupedMMExperts` and
 requires `torch._grouped_mm` (PyTorch >=2.8). No CUDA fallback is selected silently.
 The development environment is Transformers 5.17.0 / PyTorch 2.13.0+cu130.

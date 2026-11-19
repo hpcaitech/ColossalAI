@@ -17,6 +17,19 @@ from tests.kit.numerics.capture.training import prepare
 ENTRY = "transformers_gemma4_26b_a4b_for_causal_lm"
 
 
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_moe_native_low_precision_reduction(dtype):
+    torch.manual_seed(17)
+    reference = tiny_gemma4("26b_a4b").model.layers[0].experts.to(dtype)
+    candidate = Gemma4GroupedExperts.from_native_module(copy.deepcopy(reference))
+    # Expert-id order differs from router slot order; four contributions expose cast-once versus cast-per-expert.
+    indices = (torch.arange(11)[:, None] + torch.tensor([5, 1, 7, 3])) % 8
+    weights = torch.rand(11, 4)
+    weights /= weights.sum(-1, keepdim=True)
+    inputs = torch.randn(11, 32).to(dtype)
+    torch.testing.assert_close(candidate(inputs, indices, weights), reference(inputs, indices, weights), rtol=0, atol=0)
+
+
 def test_moe_structure_and_independent_reference():
     s = prepare(ENTRY, steps=2)
     from transformers.models.gemma4.modeling_gemma4 import Gemma4TextExperts, Gemma4TextRouter
