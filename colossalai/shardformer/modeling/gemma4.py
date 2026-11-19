@@ -4,6 +4,9 @@ This adapter is DP-only. Expert weights retain their HF names, layout and Parame
 tags or gradient scaling. CPU uses the explicit reference backend; CUDA requires the shared grouped GEMM backend.
 """
 
+from dataclasses import replace
+
+import torch
 import torch.nn as nn
 
 from colossalai.moe import GroupedMMExperts, NCCLAllToAllDispatcher, ReferenceExperts
@@ -26,13 +29,20 @@ class Gemma4GroupedExperts(nn.Module):
 
     def forward(self, hidden_states, top_k_index, top_k_weights):
         dispatched = self.dispatcher.dispatch(hidden_states, top_k_index, top_k_weights)
+        gate_up, down = self.gate_up_proj, self.down_proj
         if hidden_states.device.type == "cpu":
             backend = ReferenceExperts()
         elif hidden_states.device.type == "cuda":
             backend = GroupedMMExperts()
+            # torch._grouped_mm is not registered for CUDA autocast like HF's F.linear. Cast explicitly so DDP/FSDP
+            # autocast uses the same GEMM/activation precision while gradients still reach the original parameters.
+            if torch.is_autocast_enabled("cuda") and hidden_states.dtype != torch.float64:
+                dtype = torch.get_autocast_dtype("cuda")
+                dispatched = replace(dispatched, tokens=dispatched.tokens.to(dtype))
+                gate_up, down = gate_up.to(dtype), down.to(dtype)
         else:
             raise NotImplementedError("Gemma 4 shared experts currently support CPU reference and CUDA grouped GEMM")
-        output = backend(dispatched, self.gate_up_proj, self.down_proj, self.act_fn)
+        output = backend(dispatched, gate_up, down, self.act_fn)
         # Under autocast GEMM returns BF16/FP16 even when the residual is FP32. Native HF combines into
         # zeros_like(hidden_states), so promote before combining rather than round the combined result early.
         return self.dispatcher.combine(output.to(hidden_states.dtype), dispatched)

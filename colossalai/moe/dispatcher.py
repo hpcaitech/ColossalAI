@@ -106,27 +106,11 @@ class NCCLAllToAllDispatcher:
             tokens=recv[perm],
             tokens_per_expert=recv_counts.sum(0),
             tokens_per_expert_cpu=tokens_per_expert_cpu,
-            handle=(
-                order,
-                perm,
-                send_splits,
-                recv_splits,
-                num_tokens,
-                top_k,
-                topk_weights,
-            ),
+            handle=(order, perm, send_splits, recv_splits, num_tokens, top_k, topk_weights),
         )
 
     def combine(self, expert_output: Tensor, dispatched: DispatchOutput) -> Tensor:
-        (
-            order,
-            perm,
-            send_splits,
-            recv_splits,
-            num_tokens,
-            top_k,
-            topk_weights,
-        ) = dispatched.handle
+        order, perm, send_splits, recv_splits, num_tokens, top_k, topk_weights = dispatched.handle
         out = expert_output[_inverse_permutation(perm)]
         if self.ep_size > 1:
             out, _ = all_to_all_uneven(out, recv_splits, send_splits, self.ep_group)

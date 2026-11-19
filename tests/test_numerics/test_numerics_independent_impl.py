@@ -63,6 +63,11 @@ class RenamedMLP(nn.Module):
         return {"y": self.out(h)}
 
 
+class WrongTinyMLP(TinyMLP):
+    def forward(self, x):
+        return {"y": super().forward(x)["y"] * 2}
+
+
 PARAMS = [f"fc{i}.{p}" for i in (1, 2) for p in ("weight", "bias")]
 TRACE_NAMES = (
     {"out/y", "grad/x"}
@@ -112,6 +117,14 @@ def _check_blank_control(rank, world_size, port):
     blank_control(_entry(), steps=STEPS)
     with pytest.raises(AssertionError, match="blank control"):
         blank_control(_entry(BUGGY))
+    # A declared self-control validates the reference recipe. It must not turn the candidate comparison into
+    # a self-comparison: this deliberately broken candidate still fails the independent check.
+    spec = NumericsSpec(reference_fn=TinyMLP, blank_control_fn=TinyMLP)
+    entry = (WrongTinyMLP, _data, lambda out: out, None, _attribute(spec))
+    blank_control(entry, steps=STEPS).assert_pass()
+    assert not check_training(entry, TorchDDPPlugin(), steps=STEPS).passed
+    with pytest.raises(ValueError, match="param_map=None"):
+        blank_control(_entry(NumericsSpec(blank_control_fn=TinyMLP, param_map=_rename)))
 
 
 @rerun_if_address_is_in_use()

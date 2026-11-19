@@ -1,7 +1,7 @@
 """Gemma 4 policy for data parallel training (TP=1), with shared replicated MoE experts.
 
 Keeping the native forward preserves per-layer embeddings and cross-layer KV autograd.
-No fused kernels, tensor/sequence parallelism or pipeline parallelism are implemented here.
+Attention and normalization stay native; MoE uses shared dispatch/GEMM. TP/SP/PP and EP are not implemented here.
 """
 
 from .base_policy import Policy

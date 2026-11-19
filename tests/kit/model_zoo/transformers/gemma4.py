@@ -1,4 +1,4 @@
-"""Small native Gemma 4 dense models retaining PLE and shared KV layers."""
+"""Structural Gemma 4 tiny models: dense PLE/shared KV and 26B-A4B replicated shared experts."""
 
 from functools import partial
 
@@ -151,10 +151,13 @@ if Gemma4ForCausalLM is not None:
             has_control_flow=True,
             numerics=NumericsSpec(
                 reference_fn=partial(tiny_gemma4, "26b_a4b"),
+                blank_control_fn=partial(tiny_gemma4, "26b_a4b"),
                 prepare_fn=gemma4_numerics_prepare,
                 token_loss=TokenLoss(loss=gemma4_summed_token_loss, count=gemma4_valid_tokens),
                 tied_params=(("model.embed_tokens.weight", "lm_head.weight"),),
                 routers=Routers(select=gemma4_router, top_k=2),
+                # Independently observed overflow at 65536 in native/reference FP16. Applied equally to both sides.
+                fp16_loss_scale=1024.0,
             ),
         ),
     )
