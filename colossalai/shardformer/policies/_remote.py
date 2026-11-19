@@ -7,6 +7,7 @@ class NativeRemotePolicy(Policy):
     """Admit the native single-device path; no kernel or parallel replacement."""
 
     family = None
+    supports_gradient_checkpointing = False
 
     def config_sanity_check(self):
         from transformers import __version__
@@ -43,7 +44,7 @@ class NativeRemotePolicy(Policy):
             )
         if getattr(self.model.config, "use_cache", False):
             raise NotImplementedError(f"{self.family} policy requires config.use_cache=False")
-        if getattr(self.model, "is_gradient_checkpointing", False):
+        if getattr(self.model, "is_gradient_checkpointing", False) and not self.supports_gradient_checkpointing:
             raise NotImplementedError(f"{self.family} gradient checkpointing has not been validated")
 
     def preprocess(self):

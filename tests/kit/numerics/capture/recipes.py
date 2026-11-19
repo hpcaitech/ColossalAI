@@ -120,7 +120,25 @@ def recipe_for(plugin: Plugin, mixed_precision: Union[str, MixedPrecision, None]
         offloaded = (
             config["placement_policy"] != "static" or config["offload_optim_frac"] or config["offload_param_frac"]
         )
-        if offloaded or optim["max_norm"] > 0 or config["use_fp8"] or not config["master_weights"]:
+        # Static all-CPU optimizer placement has one reproducible reference
+        # recipe only when every chunk is explicitly sharded. Gathered chunks
+        # stay on the accelerator even with offload_optim_frac=1.
+        chunks = config["chunk_config_dict"]
+        cpu_offload = (
+            config["placement_policy"] == "static"
+            and config["offload_optim_frac"] == 1.0
+            and config["shard_param_frac"] == 1.0
+            and config["offload_param_frac"] in (0.0, 1.0)
+            and config["mixed_precision"] == torch.bfloat16
+            and bool(chunks)
+            and all(not c["keep_gathered"] for c in chunks.values())
+        )
+        if (
+            (offloaded and not cpu_offload)
+            or optim["max_norm"] > 0
+            or config["use_fp8"]
+            or not config["master_weights"]
+        ):
             raise UnsupportedRecipe(
                 "GeminiPlugin with offloading (placement_policy='auto', offload_*_frac), max_norm, use_fp8 or "
                 "master_weights=False is not verified"
@@ -131,7 +149,14 @@ def recipe_for(plugin: Plugin, mixed_precision: Union[str, MixedPrecision, None]
             "gemini_optimizer.py: float32 master weights in chunks"
         )
         if dtype == torch.bfloat16:
-            return Recipe(torch.bfloat16, master_weights=True, source=source + ", no loss scaling for bf16")
+            if cpu_offload:
+                source += "; StaticPlacementPolicy.setup_grads_device: fully sharded gradients/master weights on CPU"
+            return Recipe(
+                torch.bfloat16,
+                master_weights=True,
+                optimizer_device="cpu" if cpu_offload else None,
+                source=source + ", no loss scaling for bf16",
+            )
         return Recipe(
             torch.float16,
             master_weights=True,

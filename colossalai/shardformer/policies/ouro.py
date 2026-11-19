@@ -5,6 +5,7 @@ class OuroForCausalLMPolicy(NativeRemotePolicy):
     """Keep the adapted Ouro loop and shared-layer parameters intact."""
 
     family = "ouro"
+    supports_gradient_checkpointing = True
 
     def config_sanity_check(self):
         super().config_sanity_check()

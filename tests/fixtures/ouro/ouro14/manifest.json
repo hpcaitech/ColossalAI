@@ -1,0 +1,11 @@
+{
+  "repository": "ByteDance/Ouro-1.4B",
+  "revision": "574fa66cb8bf5abdc979642d01cf2b79b16bfab1",
+  "license": "Apache-2.0",
+  "sha256": {
+    "README.md": "b819245a8c6036917de6eeb2468f515619dfe25a00f5ecc01eae08dea9118bec",
+    "config.json": "ce9cc13da41591b8b4deca053d7dfee06424c0228628ee862ea86d725bc163f3",
+    "configuration_ouro.py": "950443e32929047aa08d02abad2e1888bc1914b3db988d3d675f70787f65dafb",
+    "modeling_ouro.py": "c5c68fbb368ce2909c257ae2afc50719be8c91539333d3295e19312c4316f413"
+  }
+}

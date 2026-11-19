@@ -1,0 +1,2 @@
+# Preserve the pinned upstream model cards byte for byte.
+tests/fixtures/ouro/*/README.md whitespace=-blank-at-eol
