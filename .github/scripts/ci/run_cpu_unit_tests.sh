@@ -20,6 +20,7 @@ TESTS=(
     tests/test_moe/test_grad_sync_plan.py
     tests/test_numerics/test_numerics_core.py
     tests/test_model_zoo/test_gemma4.py
+    tests/test_model_zoo/test_gemma4_moe.py
     tests/test_numerics/test_numerics_data_parallel.py
     tests/test_numerics/test_numerics_independent_impl.py
     tests/test_numerics/test_numerics_resume.py
