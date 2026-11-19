@@ -158,8 +158,13 @@ class DistributedLamb(DistributedOptim):
                     g_sum = (update**2).sum()
                     if self.dp_size > 1 and self.is_zero:
                         # ZeRO 2 doesn't shard param. Compute full param norm w/o communication.
-                        dist.all_reduce(g_sum, group=self.dp_group)
+                        # The master parameter and its update can be offloaded to CPU, while
+                        # the working parameter remains on the accelerator.  NCCL cannot
+                        # reduce a CPU tensor, so use the working parameter's device for the
+                        # norm reduction as well as the following stacked TP reduction.
                         p_local = self.shard_to_working_param[id(p)]
+                        g_sum = g_sum.to(p_local.device)
+                        dist.all_reduce(g_sum, group=self.dp_group)
 
                     w_sum = (p_local**2).sum()
                     sums = torch.stack([w_sum, g_sum])
