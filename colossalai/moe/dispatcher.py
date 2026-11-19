@@ -58,11 +58,20 @@ class NCCLAllToAllDispatcher:
     Args:
         num_experts: total number of experts in the layer.
         ep_group: expert parallel group; experts are split evenly and contiguously over its ranks.
+        local_only: keep every expert on this rank, even inside a data-parallel process group. No EP collectives.
     """
 
-    def __init__(self, num_experts: int, ep_group: Optional[ProcessGroup] = None):
+    def __init__(
+        self,
+        num_experts: int,
+        ep_group: Optional[ProcessGroup] = None,
+        *,
+        local_only: bool = False,
+    ):
+        if local_only and ep_group is not None:
+            raise ValueError("local_only dispatch cannot use an expert parallel group")
         self.ep_group = ep_group
-        self.ep_size = dist.get_world_size(ep_group) if dist.is_initialized() else 1
+        self.ep_size = dist.get_world_size(ep_group) if dist.is_initialized() and not local_only else 1
         if num_experts % self.ep_size != 0:
             raise ValueError(f"num_experts ({num_experts}) must be divisible by the ep size ({self.ep_size})")
         self.num_experts = num_experts
@@ -97,11 +106,27 @@ class NCCLAllToAllDispatcher:
             tokens=recv[perm],
             tokens_per_expert=recv_counts.sum(0),
             tokens_per_expert_cpu=tokens_per_expert_cpu,
-            handle=(order, perm, send_splits, recv_splits, num_tokens, top_k, topk_weights),
+            handle=(
+                order,
+                perm,
+                send_splits,
+                recv_splits,
+                num_tokens,
+                top_k,
+                topk_weights,
+            ),
         )
 
     def combine(self, expert_output: Tensor, dispatched: DispatchOutput) -> Tensor:
-        order, perm, send_splits, recv_splits, num_tokens, top_k, topk_weights = dispatched.handle
+        (
+            order,
+            perm,
+            send_splits,
+            recv_splits,
+            num_tokens,
+            top_k,
+            topk_weights,
+        ) = dispatched.handle
         out = expert_output[_inverse_permutation(perm)]
         if self.ep_size > 1:
             out, _ = all_to_all_uneven(out, recv_splits, send_splits, self.ep_group)

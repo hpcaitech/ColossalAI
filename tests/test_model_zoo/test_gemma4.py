@@ -66,7 +66,7 @@ def test_gemma4_hf_roundtrip(variant, tmp_path):
 
 
 def test_gemma4_registered():
-    assert len(model_zoo.get_sub_registry("transformers_gemma4_")) == 2
+    assert len(model_zoo.get_sub_registry("transformers_gemma4_")) == 3
 
 
 @pytest.mark.parametrize("variant", ["e2b", "e4b"])
@@ -221,7 +221,10 @@ def _ddp_equivalence(rank, world_size, port, variant):
         local_batch = {k: v[rank::world_size] for k, v in batch.items()}
         local_tokens = local_batch["labels"][:, 1:].ne(-100).sum()
         # DDP averages rank gradients; compensate using the global valid-token count.
-        booster.backward(candidate(**local_batch).loss * (world_size * local_tokens / total_tokens), optimizer)
+        booster.backward(
+            candidate(**local_batch).loss * (world_size * local_tokens / total_tokens),
+            optimizer,
+        )
         grads = lambda m: {n: p.grad.detach() for n, p in m.named_parameters()}
         assert_aligned(grads(accumulated), grads(reference), grads(truth))
         assert_aligned(grads(candidate.unwrap()), grads(accumulated), grads(truth))

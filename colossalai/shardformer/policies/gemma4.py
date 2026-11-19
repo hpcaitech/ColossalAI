@@ -1,4 +1,4 @@
-"""Native Gemma 4 dense policy for data parallel training (TP=1).
+"""Gemma 4 policy for data parallel training (TP=1), with shared replicated MoE experts.
 
 Keeping the native forward preserves per-layer embeddings and cross-layer KV autograd.
 No fused kernels, tensor/sequence parallelism or pipeline parallelism are implemented here.
@@ -27,9 +27,13 @@ class Gemma4Policy(Policy):
             raise NotImplementedError("Use native Gemma 4 kernels and HF non-reentrant gradient checkpointing")
 
     def preprocess(self):
+        if self.shard_config.ep_group is not None:
+            raise NotImplementedError("Gemma 4 currently supports replicated experts (EP=1) only")
         text_config = getattr(self.model.config, "text_config", self.model.config)
         if text_config.enable_moe_block:
-            raise NotImplementedError("This policy covers Gemma 4 dense models only")
+            from ..modeling.gemma4 import replace_gemma4_experts
+
+            replace_gemma4_experts(self.model)
         return self.model
 
     def module_policy(self):
