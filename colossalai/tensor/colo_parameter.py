@@ -64,6 +64,13 @@ class ColoParameter(ColoTensor, torch.nn.Parameter):
                 with torch._C.DisableTorchFunction():
                     func = ColoParamOpHookManager.rewrite_op(func)
                 ret = super().__torch_function__(func, types, args, kwargs)
+                # Transformers v5 Qwen3-MoE indexes 3D expert parameters and keeps
+                # the resulting view for backward. Gemini may release the source
+                # chunk before that backward read, so detach the indexed view from
+                # the chunk storage while preserving its autograd history.
+                if func is torch.Tensor.__getitem__ and any(p.ndim >= 3 for p in params):
+                    with torch._C.DisableTorchFunction():
+                        ret = ret.clone()
                 with torch._C.DisableTorchFunction():
                     ret = ColoParamOpHookManager.post_op(params, ret)
                 return _convert_output(ret, func)
