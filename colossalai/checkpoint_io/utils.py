@@ -888,6 +888,14 @@ def sharded_optimizer_loading_epilogue(optimizer: Optimizer):
         optimizer(Optimizer): An optimizer object whose state has just been loaded.
     """
 
+    # PyTorch keeps the step counter on the parameter's device for these groups.
+    for group in optimizer.param_groups:
+        if group.get("capturable") or group.get("fused"):
+            for param in group["params"]:
+                state = optimizer.state.get(param)
+                if state and torch.is_tensor(state.get("step")):
+                    state["step"] = state["step"].to(device=param.device, dtype=torch.float32, non_blocking=True)
+
     # Do the cleaning up as in src code of Pytorch.
     if Version(torch.__version__) >= Version("2.0.0"):
         optimizer._patch_step_function()  # To support multiprocessing pickle/unpickle
