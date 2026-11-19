@@ -24,7 +24,11 @@ def test_moe_structure_and_independent_reference():
     config = s.model.config
     assert config.enable_moe_block and config.num_experts == 8 and config.top_k_experts == 2
     assert config.hidden_size_per_layer_input == config.num_kv_shared_layers == 0
-    assert config.attention_k_eq_v and config.num_global_key_value_heads < config.num_key_value_heads
+    assert config.attention_k_eq_v
+    assert config.per_layer_config[5].num_key_value_heads == 1
+    assert config.per_layer_config[0].num_key_value_heads == 2
+    assert s.model.model.layers[5].self_attn.v_proj is None
+    assert s.model.model.layers[0].self_attn.v_proj is not None
     assert config.layer_types == ["sliding_attention"] * 5 + ["full_attention"]
     assert config.hidden_activation == "gelu_pytorch_tanh"
     assert s.model.is_gradient_checkpointing and s.reference.is_gradient_checkpointing

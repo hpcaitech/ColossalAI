@@ -38,14 +38,15 @@ def test_gemma4_grouped_model_checkpointed():
     from colossalai.shardformer.modeling.gemma4 import replace_gemma4_experts
     from tests.kit.model_zoo.transformers.gemma4 import gemma4_data
 
-    model = replace_gemma4_experts(tiny_gemma4("26b_a4b")).cuda().bfloat16()
+    model = replace_gemma4_experts(tiny_gemma4("26b_a4b")).cuda()
     model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
     opt = torch.optim.AdamW(model.parameters(), lr=1e-3)
     before = {n: p.detach().clone() for n, p in model.named_parameters()}
     with patch.object(torch, "_grouped_mm", wraps=torch._grouped_mm) as grouped:
         for _ in range(3):
             opt.zero_grad()
-            loss = model(**{n: v.cuda() for n, v in gemma4_data().items()}).loss
+            with torch.autocast("cuda", dtype=torch.bfloat16):
+                loss = model(**{n: v.cuda() for n, v in gemma4_data().items()}).loss
             assert torch.isfinite(loss)
             loss.backward()
             assert all(p.grad is not None and torch.isfinite(p.grad).all() for p in model.parameters())

@@ -33,7 +33,9 @@ class Gemma4GroupedExperts(nn.Module):
         else:
             raise NotImplementedError("Gemma 4 shared experts currently support CPU reference and CUDA grouped GEMM")
         output = backend(dispatched, self.gate_up_proj, self.down_proj, self.act_fn)
-        return self.dispatcher.combine(output, dispatched)
+        # Under autocast GEMM returns BF16/FP16 even when the residual is FP32. Native HF combines into
+        # zeros_like(hidden_states), so promote before combining rather than round the combined result early.
+        return self.dispatcher.combine(output.to(hidden_states.dtype), dispatched)
 
 
 def replace_gemma4_experts(model):
