@@ -829,7 +829,8 @@ def load_param_groups_into_optimizer(optimizer: Optimizer, param_group_path: str
 
     updated_groups = [update_group(g, ng) for g, ng in zip(param_groups, saved_groups)]
 
-    optimizer.__dict__.update({"param_groups": updated_groups})
+    # Replace the previous state once, before accumulating the checkpoint shards.
+    optimizer.__dict__.update({"param_groups": updated_groups, "state": defaultdict(dict)})
     return id_map
 
 
