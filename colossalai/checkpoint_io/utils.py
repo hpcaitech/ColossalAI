@@ -777,14 +777,14 @@ def load_state_dict_into_model(
 
     missing_keys = missing_keys.append(sub_missing_keys)
 
-    if strict:
-        if len(unexpected_keys) > 0:
-            error_msgs = [
-                "Unexpected key(s) in state_dict: {}. ".format(", ".join('"{}"'.format(k) for k in unexpected_keys))
-            ]
-            raise RuntimeError(
-                "Error(s) in loading state_dict for {}:\n\t{}".format(model.__class__.__name__, "\n\t".join(error_msgs))
-            )
+    if strict and len(unexpected_keys) > 0:
+        error_msgs.insert(
+            0, "Unexpected key(s) in state_dict: {}. ".format(", ".join('"{}"'.format(k) for k in unexpected_keys))
+        )
+    if len(error_msgs) > 0:
+        raise RuntimeError(
+            "Error(s) in loading state_dict for {}:\n\t{}".format(model.__class__.__name__, "\n\t".join(error_msgs))
+        )
 
 
 def load_param_groups_into_optimizer(optimizer: Optimizer, param_group_path: str) -> dict:
