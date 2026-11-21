@@ -9,8 +9,9 @@ import colossalai
 from colossalai.booster import Booster
 
 if version.parse(torch.__version__) >= version.parse("1.12.0"):
-    from colossalai.booster.plugin import TorchFSDPPlugin
     from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+
+    from colossalai.booster.plugin import TorchFSDPPlugin
 
 from colossalai.testing import parameterize, rerun_if_address_is_in_use, spawn
 from colossalai.utils.safetensors import HAS_TENSORNVME

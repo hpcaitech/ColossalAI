@@ -138,7 +138,7 @@ class AlphaBetaProfiler:
         latency_list = []
         for i in range(self.latency_iters):
             nbytes = int(BYTE << i)
-            (t, _) = self._profile(process_group, pg_handler, nbytes)
+            t, _ = self._profile(process_group, pg_handler, nbytes)
             latency_list.append(t)
 
         if latency_list[0] is None:
@@ -157,7 +157,7 @@ class AlphaBetaProfiler:
             process_group: A tuple of global rank of the process group.
             pg_handler: The handler of the process group.
         """
-        (_, bandwidth) = self._profile(process_group, pg_handler, maxbytes)
+        _, bandwidth = self._profile(process_group, pg_handler, maxbytes)
         return bandwidth
 
     def profile_ab(self):
