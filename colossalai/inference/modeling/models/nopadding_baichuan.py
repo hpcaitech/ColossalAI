@@ -35,7 +35,7 @@ def baichuan_rmsnorm_forward(
     elif hasattr(self, "epsilon"):
         eps = self.epsilon
     else:
-        TypeError(
+        raise TypeError(
             "Currently, the variable name for the epsilon of baichuan7B/13B should be 'variance_epsilon' or 'epsilon'."
         )
     if use_cuda_kernel:
