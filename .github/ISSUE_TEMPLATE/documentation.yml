@@ -1,4 +1,4 @@
-name: 📚 Documentation
+name: Documentation
 description: Report an issue related to https://www.colossalai.org/
 title: "[DOC]: "
 labels: [documentation]
@@ -10,7 +10,7 @@ body:
       #### Not suitable for your needs? [Open a blank issue](https://github.com/hpcaitech/ColossalAI/issues/new).
 - type: textarea
   attributes:
-    label: 📚 The doc issue
+    label: The doc issue
     description: |
       **Description** What content in [Documentation](https://www.colossalai.org/) is an issue?
       **Location** Where is the issue location?
@@ -26,4 +26,4 @@ body:
 - type: markdown
   attributes:
     value: >
-      Thanks for contributing 🎉!
+      Thanks for contributing!
