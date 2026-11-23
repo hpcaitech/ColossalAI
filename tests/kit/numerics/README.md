@@ -325,6 +325,16 @@ not cover the full model.
 
 ### Real weights: caching the reference
 
+An independent candidate can deliberately change arithmetic (for example, shared grouped GEMM versus native HF).
+Its FP32/BF16 error need not be identical to HF's, so the blank control's stricter near-identical-error requirement
+must check the reference recipe on the reference model itself. Such an entry may declare
+`NumericsSpec(blank_control_fn=<native reference factory>)`. This factory is used on **both** sides of the blank
+control only; the candidate still runs against `reference_fn` in every independent-implementation check with the
+unchanged numerical judge. The factory must expose the same parameter names (`param_map=None`); the existing
+prepare/tied/unused/token/router contracts still apply. The JSON records `blank_control_factory`. Without this
+explicit setting the existing blank-control behavior is unchanged. Never use this setting to bypass a failed
+independent-implementation comparison.
+
 Small random configs are cheap in float64. With real weights (`model_fn` loading them with `from_pretrained`, offline
 from the shared cache) the float64 truth is the slow part, so `training_traces(..., cache_dir=...)` and
 `acceptance --cache-dir` keep the reference runs and reuse them (`capture.cache`). A cached run is reused only if

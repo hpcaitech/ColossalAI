@@ -86,14 +86,18 @@ def _run(rank, world_size, port, variant, plugin_name, checkpoint, lazy):
         assert all(torch.isfinite(p).all() for p in after.values())
         changed = [n for n, p in after.items() if not torch.equal(before[n], p)]
         assert changed, "No parameter changed"
-        assert any("embed_tokens_per_layer" in n for n in changed), "No PLE update"
+        if variant == "26b_a4b":
+            for pattern in ("router.proj", "experts.gate_up_proj", "experts.down_proj", "mlp."):
+                assert any(pattern in n for n in changed), f"No {pattern} update"
+        else:
+            assert any("embed_tokens_per_layer" in n for n in changed), "No PLE update"
     finally:
         accelerator.empty_cache()
         dist.destroy_process_group()
 
 
 @pytest.mark.parametrize("world_size", [1, 2])
-@pytest.mark.parametrize("variant", ["e2b", "e4b"])
+@pytest.mark.parametrize("variant", ["e2b", "e4b", "26b_a4b"])
 @pytest.mark.parametrize("plugin", ["ddp", "ddp_bf16", "zero1", "zero2", "gemini", "fsdp"])
 @pytest.mark.parametrize("checkpoint,lazy", [(False, False), (True, True)])
 def test_gemma4_training(world_size, variant, plugin, checkpoint, lazy):

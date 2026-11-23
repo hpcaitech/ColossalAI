@@ -95,6 +95,10 @@ class NumericsSpec:
         fp16_loss_scale: Optional initial FP16 loss scale for acceptance recipes, applied equally to reference and
             plugin and recorded in the report. Models can need a smaller scale than the default 65536. Overflow and
             skipped optimizer updates still fail; this does not change the numerical judge or its tolerance.
+        blank_control_fn: Optional same-name model factory for the blank control only, when the candidate deliberately
+            changes arithmetic (e.g. grouped GEMM versus native HF). It runs on both sides of that control to validate
+            the reference precision recipe itself. Independent-implementation checks still run the original candidate
+            against reference_fn, with the normal judge. Requires param_map=None; no parameter renaming is inferred.
     """
 
     reference_fn: Optional[Callable[[], nn.Module]] = None
@@ -107,3 +111,4 @@ class NumericsSpec:
     tied_params: Tuple[Tuple[str, ...], ...] = ()
     # Initial scale for both FP16 acceptance runs (reference and plugin). Overflow remains a failure.
     fp16_loss_scale: Optional[float] = None
+    blank_control_fn: Optional[Callable[[], nn.Module]] = None
