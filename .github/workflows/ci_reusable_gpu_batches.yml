@@ -40,60 +40,7 @@ permissions:
   contents: read
 
 jobs:
-  prepare-source:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    outputs:
-      artifact_id: ${{ steps.upload-source.outputs.artifact-id }}
-      archive_sha256: ${{ steps.package-source.outputs.archive_sha256 }}
-    env:
-      CI_SOURCE_SHA: ${{ inputs.source_sha }}
-    steps:
-      - name: Package the exact GitHub source commit
-        id: package-source
-        shell: bash
-        run: |
-          set -euo pipefail
-          [[ "$CI_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
-          export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0
-          source_root="$(mktemp -d "$RUNNER_TEMP/colossalai-source.XXXXXX")"
-          archive="$source_root/source.tar.gz"
-          # Fetch public source on GitHub's network. The archive contains a
-          # standalone shallow repository, with no credentials or alternates.
-          git init --quiet "$source_root/repo"
-          git -C "$source_root/repo" config core.autocrlf false
-          git -C "$source_root/repo" remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
-          for attempt in 1 2; do
-            if timeout --signal=TERM --kill-after=10s 180s \
-              git -C "$source_root/repo" -c credential.helper= -c http.extraHeader= \
-              fetch --depth=1 --no-tags origin "$CI_SOURCE_SHA"; then
-              break
-            fi
-            [[ "$attempt" == 1 ]] || exit 1
-            printf 'Git fetch failed; retrying the same pinned SHA once.\n' >&2
-          done
-          [[ "$(git -C "$source_root/repo" rev-parse FETCH_HEAD)" == "$CI_SOURCE_SHA" ]]
-          git -C "$source_root/repo" -c core.hooksPath=/dev/null checkout --quiet --detach "$CI_SOURCE_SHA"
-          git -C "$source_root/repo" fsck --no-reflogs
-          # Send Git objects once, without a duplicate working tree. Checkout
-          # on the receiver restores tracked contents, modes and symlinks.
-          tar --create --gzip --file "$archive" --directory "$source_root" repo/.git
-          archive_sha256="$(sha256sum "$archive" | cut -d ' ' -f 1)"
-          printf 'Source commit: %s\nArchive SHA256: %s\n' "$CI_SOURCE_SHA" "$archive_sha256"
-          printf 'archive=%s\narchive_sha256=%s\n' "$archive" "$archive_sha256" >> "$GITHUB_OUTPUT"
-
-      - name: Upload the pinned source archive
-        id: upload-source
-        uses: actions/upload-artifact@v7
-        with:
-          name: ci-source-${{ github.run_id }}-${{ github.run_attempt }}-${{ inputs.layer }}
-          path: ${{ steps.package-source.outputs.archive }}
-          compression-level: 0
-          if-no-files-found: error
-          retention-days: ${{ inputs.artifact_retention_days }}
-
   run-batches:
-    needs: prepare-source
     runs-on: colossalai-e1-h20
     timeout-minutes: ${{ inputs.timeout_minutes }}
     env:
@@ -151,62 +98,42 @@ jobs:
           docker image inspect --format '{{.Id}}' "$COLOSSAL_CI_IMAGE" \
             | tee "$CI_RESULTS_DIR/image-id.txt"
 
-      - name: Initialize source artifact download
+      - name: Fetch and verify the exact source commit
+        timeout-minutes: 8
         shell: bash
-        run: |
-          set -euo pipefail
-          source_root="$(mktemp -d "$RUNNER_TEMP/colossalai-source.XXXXXX")"
-          printf 'CI_SOURCE_ARTIFACT_DIR=%s\n' "$source_root" >> "$GITHUB_ENV"
-
-      - name: Download the pinned source archive
-        timeout-minutes: 15
-        uses: actions/download-artifact@v8
-        with:
-          artifact-ids: ${{ needs.prepare-source.outputs.artifact_id }}
-          path: ${{ env.CI_SOURCE_ARTIFACT_DIR }}
-          digest-mismatch: error
-
-      - name: Restore and verify the exact source commit
-        timeout-minutes: 5
-        shell: bash
-        env:
-          SOURCE_ARCHIVE_SHA256: ${{ needs.prepare-source.outputs.archive_sha256 }}
         run: |
           set -euo pipefail
           [[ "$CI_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
-          [[ "$SOURCE_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]]
           export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_TERMINAL_PROMPT=0
-          source_root="$CI_SOURCE_ARTIFACT_DIR"
-          archive="$source_root/source.tar.gz"
-          printf '%s  %s\n' "$SOURCE_ARCHIVE_SHA256" "$archive" | sha256sum --check --strict
-          tar --extract --gzip --file "$archive" --directory "$source_root" --no-same-owner
-          # No network access is needed after restoring this self-contained Git
-          # repository. Check both object integrity and every working-tree blob.
-          [[ -d "$source_root/repo/.git" ]]
-          if [[ -n "$(find "$source_root/repo" -mindepth 1 -maxdepth 1 ! -name .git -print -quit)" ]]; then
-            printf 'Source archive must contain only Git metadata and objects.\n' >&2
-            exit 1
-          fi
-          [[ ! -e "$source_root/repo/.git/objects/info/alternates" ]]
-          [[ "$(git -C "$source_root/repo" rev-parse HEAD)" == "$CI_SOURCE_SHA" ]]
-          git -C "$source_root/repo" -c protocol.allow=never fsck --no-reflogs
+          source_root="$(mktemp -d "$RUNNER_TEMP/colossalai-source.XXXXXX")"
+          # Runner-specific proxies belong in the runner environment. Download
+          # a self-contained checkout without stored credentials or alternates.
+          git init --quiet "$source_root/repo"
+          git -C "$source_root/repo" config core.autocrlf false
+          git -C "$source_root/repo" remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
+          for attempt in 1 2; do
+            if timeout --signal=TERM --kill-after=10s 180s \
+              git -C "$source_root/repo" -c credential.helper= -c http.extraHeader= \
+              fetch --depth=1 --no-tags origin "$CI_SOURCE_SHA"; then
+              break
+            fi
+            [[ "$attempt" == 1 ]] || exit 1
+            printf 'Git fetch failed; retrying the same pinned SHA once.\n' >&2
+          done
+          [[ "$(git -C "$source_root/repo" rev-parse FETCH_HEAD)" == "$CI_SOURCE_SHA" ]]
           git -C "$source_root/repo" -c protocol.allow=never -c core.hooksPath=/dev/null \
-            reset --hard "$CI_SOURCE_SHA"
-          git -C "$source_root/repo" -c protocol.allow=never add --force --all
-          snapshot_tree="$(git -C "$source_root/repo" -c protocol.allow=never write-tree)"
-          commit_tree="$(git -C "$source_root/repo" rev-parse 'HEAD^{tree}')"
-          if [[ "$snapshot_tree" != "$commit_tree" ]]; then
-            printf 'Source archive tree %s does not match commit tree %s.\n' "$snapshot_tree" "$commit_tree" >&2
-            exit 1
-          fi
+            checkout --quiet --detach "$CI_SOURCE_SHA"
+          [[ "$(git -C "$source_root/repo" rev-parse HEAD)" == "$CI_SOURCE_SHA" ]]
+          [[ ! -e "$source_root/repo/.git/objects/info/alternates" ]]
+          git -C "$source_root/repo" -c protocol.allow=never fsck --no-reflogs
           source_status="$(git -C "$source_root/repo" -c protocol.allow=never status --porcelain)"
           if [[ -n "$source_status" ]]; then
             printf 'Source working tree differs from the pinned commit:\n%s\n' "$source_status" >&2
             exit 1
           fi
-          printf 'Source commit: %s\nArchive SHA256: %s\n' "$CI_SOURCE_SHA" "$SOURCE_ARCHIVE_SHA256"
+          printf 'Source commit: %s\nSource tree: %s\n' \
+            "$CI_SOURCE_SHA" "$(git -C "$source_root/repo" rev-parse 'HEAD^{tree}')"
           printf 'COLOSSAL_REPO=%s\n' "$source_root/repo" >> "$GITHUB_ENV"
-          rm -- "$archive"
 
       - name: Validate the batch runner without using GPUs
         shell: bash

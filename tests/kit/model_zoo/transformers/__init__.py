@@ -13,6 +13,7 @@ from .llama import *
 from .mistral import *
 from .mixtral import *
 from .opt import *
+from .ouro import *
 from .qwen2 import *
 from .qwen3 import *
 from .qwen3_moe import *

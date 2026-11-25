@@ -204,9 +204,12 @@ case "${BATCH}" in
             tests/test_booster/test_plugin/test_torch_ddp_plugin.py
             tests/test_booster/test_plugin/test_torch_fsdp_plugin.py
             tests/test_booster/test_plugin/test_low_level_zero_plugin.py
-            tests/test_booster/test_plugin/test_gemma4.py
-            tests/test_booster/test_plugin/test_gemma4_moe.py
+            tests/test_booster/test_plugin/test_gemma4_training.py
+            tests/test_booster/test_plugin/test_gemma4_moe_training.py
             tests/test_booster/test_plugin/test_gemma4_alignment.py
+            tests/test_booster/test_plugin/test_ouro.py
+            tests/test_model_zoo/test_ouro_model_zoo.py
+            tests/test_checkpoint_io/test_gemini_offload_export.py
             tests/test_booster/test_mixed_precision/test_bf16.py
             tests/test_checkpoint_io/test_low_level_zero_master_resume.py
             tests/test_checkpoint_io/test_gemini_master_resume.py
@@ -276,8 +279,8 @@ case "${BATCH}" in
             --ignore=tests/test_booster/test_plugin/test_torch_ddp_plugin.py
             --ignore=tests/test_booster/test_plugin/test_torch_fsdp_plugin.py
             --ignore=tests/test_booster/test_plugin/test_low_level_zero_plugin.py
-            --ignore=tests/test_booster/test_plugin/test_gemma4.py
-            --ignore=tests/test_booster/test_plugin/test_gemma4_moe.py
+            --ignore=tests/test_booster/test_plugin/test_gemma4_training.py
+            --ignore=tests/test_booster/test_plugin/test_gemma4_moe_training.py
             --ignore=tests/test_booster/test_plugin/test_gemma4_alignment.py
             --ignore=tests/test_booster/test_mixed_precision/test_bf16.py
             --ignore=tests/test_checkpoint_io/test_low_level_zero_master_resume.py

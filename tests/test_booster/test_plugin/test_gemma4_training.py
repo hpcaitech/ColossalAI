@@ -14,7 +14,7 @@ from colossalai.booster.plugin import GeminiPlugin, LowLevelZeroPlugin, TorchDDP
 from colossalai.lazy import LazyInitContext
 from colossalai.nn.optimizer import HybridAdam
 from colossalai.shardformer import ShardConfig, ShardFormer
-from colossalai.testing import spawn
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 from tests.kit.model_zoo.transformers.gemma4 import gemma4_data, tiny_gemma4
 
 
@@ -100,6 +100,7 @@ def _run(rank, world_size, port, variant, plugin_name, checkpoint, lazy):
 @pytest.mark.parametrize("variant", ["e2b", "e4b", "26b_a4b"])
 @pytest.mark.parametrize("plugin", ["ddp", "ddp_bf16", "zero1", "zero2", "gemini", "fsdp"])
 @pytest.mark.parametrize("checkpoint,lazy", [(False, False), (True, True)])
+@rerun_if_address_is_in_use()
 def test_gemma4_training(world_size, variant, plugin, checkpoint, lazy):
     # A missing allocation is not a successful or skipped model test.
     assert get_accelerator().device_count() >= world_size, f"Requires {world_size} allocated devices"
