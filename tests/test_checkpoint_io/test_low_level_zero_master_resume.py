@@ -7,7 +7,7 @@ import torch.distributed as dist
 import colossalai
 from colossalai.booster import Booster
 from colossalai.booster.plugin import LowLevelZeroPlugin
-from colossalai.testing import spawn
+from colossalai.testing import rerun_if_address_is_in_use, spawn
 
 
 def _run_resume(
@@ -95,6 +95,7 @@ def _run_resume(
 @pytest.mark.parametrize("offload", [False, True])
 @pytest.mark.parametrize("shard", [False, True])
 @pytest.mark.parametrize("low_cpu_mem_mode", [False, True])
+@rerun_if_address_is_in_use()
 def test_low_level_zero_master_resume(world_size, stage, offload, shard, low_cpu_mem_mode, tmp_path):
     spawn(
         _run_resume,
@@ -110,6 +111,7 @@ def test_low_level_zero_master_resume(world_size, stage, offload, shard, low_cpu
 @pytest.mark.parametrize("world_size", [1, 2])
 @pytest.mark.parametrize("shard", [False, True])
 @pytest.mark.parametrize("precision,cold", [("fp16", False), ("fp16", True), ("bf16", True)])
+@rerun_if_address_is_in_use()
 def test_low_level_zero_master_resume_edge_cases(world_size, shard, precision, cold, tmp_path):
     spawn(
         _run_resume,

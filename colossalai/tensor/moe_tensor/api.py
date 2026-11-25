@@ -1,4 +1,5 @@
-from typing import List
+from enum import Enum
+from typing import List, Optional
 
 import torch
 import torch.distributed as dist
@@ -55,6 +56,46 @@ def is_moe_tensor_ep_fused(tensor: torch.Tensor) -> bool:
         bool: Whether the given tensor holds fused experts.
     """
     return getattr(tensor, "ep_fused", False)
+
+
+class ExpertGradScale(str, Enum):
+    """Where the ``1 / ep_size`` factor of an expert parameter's gradient is applied.
+
+    The gradient of an expert weight on one rank sums the contributions of every token the EP group routed to it, so
+    averaging it over the data-parallel replicas needs one more division by ``ep_size``.
+    """
+
+    # inside the layer's autograd (EPGradScaler); gradient reduction divides by the replica group size only
+    IN_FORWARD = "in_forward"
+    # not in the layer; gradient reduction divides by replica group size * ep_size
+    IN_REDUCTION = "in_reduction"
+
+
+def set_expert_grad_scale(tensor: torch.Tensor, scale: ExpertGradScale) -> None:
+    """Record where the ``1 / ep_size`` factor of this expert parameter's gradient is applied.
+
+    Args:
+        tensor (torch.Tensor): An expert parameter, already marked with :func:`set_moe_tensor_ep_group`.
+        scale (ExpertGradScale): Where the factor is applied.
+    """
+    assert is_moe_tensor(tensor), "call set_moe_tensor_ep_group first"
+    tensor.__setattr__("expert_grad_scale", ExpertGradScale(scale))
+
+
+def get_expert_grad_scale(tensor: torch.Tensor) -> Optional[ExpertGradScale]:
+    """
+    Get where the ``1 / ep_size`` factor of the given parameter's gradient is applied.
+
+    Args:
+        tensor (torch.Tensor): The tensor to be checked.
+
+    Returns:
+        Optional[ExpertGradScale]: ``None`` for non-expert tensors. Expert tensors without a tag are treated as
+        ``IN_FORWARD``, which is what the existing EP models do.
+    """
+    if not is_moe_tensor(tensor):
+        return None
+    return getattr(tensor, "expert_grad_scale", ExpertGradScale.IN_FORWARD)
 
 
 def get_moe_info(ep_size: int, dp_size: int, pp_size: int, ep_inside: bool) -> MoeParallelInfo:

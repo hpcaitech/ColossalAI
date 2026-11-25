@@ -186,18 +186,20 @@ model_zoo.register(
 ```
 
 Pass the entry's model_zoo name and the plugin exactly as training code would build it. Plugins need
-`torch.distributed`, so run inside `colossalai.testing.spawn`:
+`torch.distributed`, so run inside `colossalai.testing.spawn`. `@worker` launches ColossalAI for the worker and
+releases its process group when it returns or raises; a worker that exits with its group alive can abort or hang on
+the way out (see `scenarios/_distributed.py`):
 
 ```python
-import colossalai
 from colossalai.booster.plugin import LowLevelZeroPlugin
 from colossalai.testing import spawn
 from tests.kit.numerics import judge
+from tests.kit.numerics.scenarios._distributed import worker
 from tests.kit.numerics.scenarios.independent_impl import blank_control, training_traces
 
 
+@worker
 def run(rank, world_size, port):
-    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port)
     blank_control("transformers_mixtral")
     plugin = LowLevelZeroPlugin(stage=2, precision="bf16")
     test, ref, truth = training_traces("transformers_mixtral", plugin, steps=3)
@@ -322,6 +324,16 @@ with a reduced configuration (fewer layers, same layer types); say so wherever t
 not cover the full model.
 
 ### Real weights: caching the reference
+
+An independent candidate can deliberately change arithmetic (for example, shared grouped GEMM versus native HF).
+Its FP32/BF16 error need not be identical to HF's, so the blank control's stricter near-identical-error requirement
+must check the reference recipe on the reference model itself. Such an entry may declare
+`NumericsSpec(blank_control_fn=<native reference factory>)`. This factory is used on **both** sides of the blank
+control only; the candidate still runs against `reference_fn` in every independent-implementation check with the
+unchanged numerical judge. The factory must expose the same parameter names (`param_map=None`); the existing
+prepare/tied/unused/token/router contracts still apply. The JSON records `blank_control_factory`. Without this
+explicit setting the existing blank-control behavior is unchanged. Never use this setting to bypass a failed
+independent-implementation comparison.
 
 Small random configs are cheap in float64. With real weights (`model_fn` loading them with `from_pretrained`, offline
 from the shared cache) the float64 truth is the slow part, so `training_traces(..., cache_dir=...)` and

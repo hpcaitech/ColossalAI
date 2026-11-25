@@ -15,6 +15,7 @@ from colossalai.testing import free_port, rerun_if_address_is_in_use
 from tests.kit.numerics import NumericsSpec, TokenLoss, judge_relative_bound, relative_bound
 from tests.kit.numerics.capture.training import default_optimizer
 from tests.kit.numerics.scenarios import data_parallel, resume
+from tests.kit.numerics.scenarios._distributed import worker
 
 GRADS = {f"grad/param/fc{i}.{p}" for i in (1, 2) for p in ("weight", "bias")}
 
@@ -185,11 +186,10 @@ def test_step_without_tokens_rejected():
         data_parallel.check(entry, TorchDDPPlugin, world_size=2, micro_batches=4, token_weighted=True)
 
 
+@worker
 def _without_token_loss(rank, world_size, port):
-    import colossalai
     from tests.kit.numerics.capture.training import prepare, run_data_parallel
 
-    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port)
     with pytest.raises(ValueError, match="token_loss"):
         run_data_parallel(prepare(ENTRY, 2), TorchDDPPlugin(), 2, token_weighted=True)
 

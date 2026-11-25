@@ -1,4 +1,4 @@
-"""Small native Gemma 4 dense models retaining PLE and shared KV layers."""
+"""Structural Gemma 4 tiny models: dense PLE/shared KV and 26B-A4B replicated shared experts."""
 
 from functools import partial
 
@@ -6,6 +6,7 @@ import torch
 import torch.nn.functional as F
 
 from tests.kit.numerics import NumericsSpec, TokenLoss
+from tests.kit.numerics.spec import Routers
 
 from ..registry import ModelAttribute, model_zoo
 
@@ -16,6 +17,37 @@ except ImportError:
 
 
 def tiny_gemma4_config(variant="e2b"):
+    if variant == "26b_a4b":
+        return Gemma4TextConfig(
+            vocab_size=128,
+            hidden_size=32,
+            intermediate_size=64,
+            moe_intermediate_size=32,
+            num_experts=8,
+            top_k_experts=2,
+            enable_moe_block=True,
+            hidden_activation="gelu_pytorch_tanh",
+            num_hidden_layers=6,
+            num_attention_heads=4,
+            num_key_value_heads=2,
+            num_global_key_value_heads=1,
+            head_dim=16,
+            global_head_dim=32,
+            attention_k_eq_v=True,
+            hidden_size_per_layer_input=0,
+            num_kv_shared_layers=0,
+            use_double_wide_mlp=False,
+            layer_types=["sliding_attention"] * 5 + ["full_attention"],
+            sliding_window=4,
+            max_position_embeddings=64,
+            attention_dropout=0.0,
+            final_logit_softcapping=30.0,
+            tie_word_embeddings=True,
+            use_cache=False,
+            attn_implementation="eager",
+            experts_implementation="eager",
+            pad_token_id=0,
+        )
     if variant not in ("e2b", "e4b"):
         raise ValueError(f"Unknown dense variant: {variant}")
     cycle = 5 if variant == "e2b" else 6
@@ -47,10 +79,24 @@ def tiny_gemma4(variant="e2b"):
     return Gemma4ForCausalLM(tiny_gemma4_config(variant))
 
 
+def tiny_gemma4_moe():
+    from colossalai.shardformer.modeling.gemma4 import replace_gemma4_experts
+
+    return replace_gemma4_experts(tiny_gemma4("26b_a4b"))
+
+
+def gemma4_router(name, module):
+    return name.endswith(".router")
+
+
 def gemma4_data():
     ids = torch.tensor([[2, 5, 9, 12, 21, 34, 55, 3], [2, 7, 11, 23, 31, 47, 0, 0]])
     mask = ids.ne(0).long()
-    return {"input_ids": ids, "attention_mask": mask, "labels": ids.masked_fill(mask == 0, -100)}
+    return {
+        "input_ids": ids,
+        "attention_mask": mask,
+        "labels": ids.masked_fill(mask == 0, -100),
+    }
 
 
 def gemma4_numerics_data():
@@ -74,7 +120,12 @@ def gemma4_summed_token_loss(output, batch):
     # Native HF causal LM loss upcasts logits to float32 and predicts each token from the preceding position.
     logits = output.logits[:, :-1].float()
     labels = batch["labels"][:, 1:]
-    return F.cross_entropy(logits.reshape(-1, logits.shape[-1]), labels.reshape(-1), ignore_index=-100, reduction="sum")
+    return F.cross_entropy(
+        logits.reshape(-1, logits.shape[-1]),
+        labels.reshape(-1),
+        ignore_index=-100,
+        reduction="sum",
+    )
 
 
 def gemma4_valid_tokens(batch):
@@ -90,6 +141,26 @@ def gemma4_loss(output):
 
 
 if Gemma4ForCausalLM is not None:
+    model_zoo.register(
+        "transformers_gemma4_26b_a4b_for_causal_lm",
+        tiny_gemma4_moe,
+        gemma4_numerics_data,
+        gemma4_output,
+        gemma4_loss,
+        ModelAttribute(
+            has_control_flow=True,
+            numerics=NumericsSpec(
+                reference_fn=partial(tiny_gemma4, "26b_a4b"),
+                blank_control_fn=partial(tiny_gemma4, "26b_a4b"),
+                prepare_fn=gemma4_numerics_prepare,
+                token_loss=TokenLoss(loss=gemma4_summed_token_loss, count=gemma4_valid_tokens),
+                tied_params=(("model.embed_tokens.weight", "lm_head.weight"),),
+                routers=Routers(select=gemma4_router, top_k=2),
+                # Independently observed overflow at 65536 in native/reference FP16. Applied equally to both sides.
+                fp16_loss_scale=1024.0,
+            ),
+        ),
+    )
     for variant in ("e2b", "e4b"):
         model_zoo.register(
             f"transformers_gemma4_{variant}_for_causal_lm",

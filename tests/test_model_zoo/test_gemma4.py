@@ -66,7 +66,7 @@ def test_gemma4_hf_roundtrip(variant, tmp_path):
 
 
 def test_gemma4_registered():
-    assert len(model_zoo.get_sub_registry("transformers_gemma4_")) == 2
+    assert len(model_zoo.get_sub_registry("transformers_gemma4_")) == 3
 
 
 @pytest.mark.parametrize("variant", ["e2b", "e4b"])
