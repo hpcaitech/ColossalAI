@@ -31,6 +31,7 @@ from colossalai.checkpoint_io.utils import (
 from colossalai.cluster import DistCoordinator, ProcessGroupMesh
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.logging import get_dist_logger
+from colossalai.nn.optimizer import Muon
 from colossalai.shardformer import ShardConfig, ShardFormer
 from colossalai.zero import GeminiDDP, GeminiOptimizer
 from colossalai.zero.gemini.memory_tracer import MemStats
@@ -665,6 +666,11 @@ class GeminiPlugin(DPPluginBase):
         dataloader: Optional[DataLoader] = None,
         lr_scheduler: Optional[LRScheduler] = None,
     ) -> Tuple[nn.Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
+        if isinstance(optimizer, Muon):
+            raise NotImplementedError(
+                f"GeminiPlugin does not support {type(optimizer).__name__}: its chunks split matrices at arbitrary "
+                "boundaries. Use LowLevelZeroPlugin (ZeRO stage 1 or 2) or TorchDDPPlugin."
+            )
         params_info = get_param_info(optimizer)
         if not isinstance(model, ModelWrapper):
             # convert model to sync bn

@@ -34,6 +34,7 @@ from colossalai.checkpoint_io.utils import (
 from colossalai.cluster import DistCoordinator
 from colossalai.interface import ModelWrapper, OptimizerWrapper
 from colossalai.logging import get_dist_logger
+from colossalai.nn.optimizer import Muon
 from colossalai.utils.safetensors import load_flat
 
 from .dp_plugin_base import DPPluginBase
@@ -536,6 +537,11 @@ class TorchFSDPPlugin(DPPluginBase):
         dataloader: Optional[DataLoader] = None,
         lr_scheduler: Optional[LRScheduler] = None,
     ) -> Tuple[nn.Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
+        if isinstance(optimizer, Muon):
+            raise NotImplementedError(
+                f"TorchFSDPPlugin does not support {type(optimizer).__name__}: FSDP hands the optimizer flattened "
+                "parameters in one group. Use LowLevelZeroPlugin (ZeRO stage 1 or 2) or TorchDDPPlugin."
+            )
         # wrap the model with PyTorch FSDP
         fsdp_model = TorchFSDPModel(model, device_id=torch.cuda.current_device(), **self.fsdp_kwargs)
 
