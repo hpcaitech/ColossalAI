@@ -26,7 +26,6 @@ class DistributedAdaFactor(DistributedOptim):
         relative_step=True,
         warmup_init=False,
     ):
-        lr = None
         if lr is not None and relative_step:
             raise ValueError("Cannot combine manual `lr` and `relative_step=True` options")
         if warmup_init and not relative_step:
