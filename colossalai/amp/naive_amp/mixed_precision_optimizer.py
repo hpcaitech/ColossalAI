@@ -74,17 +74,32 @@ class MixedPrecisionOptimizer(OptimizerWrapper):
 
         # create master weights
         for group in self.optim.param_groups:
-            master_params = []
-            for p in group["params"]:
-                if p.requires_grad:
-                    master_p = p
-                    if p.dtype != torch.float:
-                        master_p = p.detach().float()
-                    self.working_to_master_map[p] = master_p
-                    self.master_to_working_map[master_p] = p
-                    master_params.append(master_p)
-            group["params"] = master_params
+            self._init_master_params(group)
         self._current_grad_norm: Optional[float] = None
+
+    def _init_master_params(self, group):
+        master_params = []
+        for p in group["params"]:
+            if p.requires_grad:
+                master_p = p
+                if p.dtype != torch.float:
+                    master_p = p.detach().float()
+                self.working_to_master_map[p] = master_p
+                self.master_to_working_map[master_p] = p
+                master_params.append(master_p)
+        group["params"] = master_params
+
+    def add_param_group(self, param_group):
+        self.optim.add_param_group(param_group)
+        group = self.optim.param_groups[-1]
+        # The underlying optimizer only sees master parameters, so it cannot
+        # detect a repeated low-precision working parameter in the new group.
+        if any(p in self.working_to_master_map for p in group["params"]):
+            self.optim.param_groups.pop()
+            raise ValueError("some parameters appear in more than one parameter group")
+        if isinstance(self.mixed_precision, NaiveFP16MixedPrecisionMixin):
+            self.mixed_precision.params.extend(group["params"])
+        self._init_master_params(group)
 
     def backward(self, loss: Tensor, inputs=None, retain_graph=False, **kwargs):
         loss = self.mixed_precision.pre_backward(loss)
