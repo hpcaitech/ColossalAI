@@ -132,7 +132,7 @@ class Muon(DistributedOptim):
             raise ValueError(f"ns_steps must be in [1, 99], got {ns_steps}")
         if adjust_lr_fn is not None and adjust_lr_fn not in ADJUST_LR_FNS:
             raise ValueError(f"adjust_lr_fn must be one of {ADJUST_LR_FNS} or None, got {adjust_lr_fn!r}")
-        self._muon_defaults = dict(
+        muon_defaults = dict(
             momentum=momentum,
             nesterov=nesterov,
             ns_coefficients=tuple(ns_coefficients),
@@ -140,7 +140,12 @@ class Muon(DistributedOptim):
             eps=eps,
             adjust_lr_fn=adjust_lr_fn,
         )
-        self._adamw_defaults = dict(betas=tuple(betas), eps=adamw_eps)
+        self._init_groups(params, lr, weight_decay, muon_defaults, dict(betas=tuple(betas), eps=adamw_eps))
+
+    def _init_groups(self, params, lr: float, weight_decay: float, muon_defaults: Dict, adamw_defaults: Dict) -> None:
+        """Build the parameter groups; ``muon_defaults`` and ``adamw_defaults`` fill the keys a group leaves out."""
+        self._muon_defaults = muon_defaults
+        self._adamw_defaults = adamw_defaults
         super().__init__(params, dict(lr=lr, weight_decay=weight_decay))
         self.dp_group: Optional[dist.ProcessGroup] = None
         self.shard_to_working_param: Dict[int, Tensor] = {}
@@ -159,7 +164,7 @@ class Muon(DistributedOptim):
             for p in params:
                 if p.ndim != 2:
                     raise ValueError(
-                        f"Muon only supports 2D parameters, got shape {tuple(p.shape)}; "
+                        f"{type(self).__name__} only supports 2D parameters, got shape {tuple(p.shape)}; "
                         "put it in a group with use_muon=False (see muon_param_groups)"
                     )
         super().add_param_group(param_group)
@@ -182,7 +187,7 @@ class Muon(DistributedOptim):
             is_zero (bool): unused; shards are recognized by their shape.
         """
         if tp_group is not None and dist.get_world_size(tp_group) > 1:
-            raise NotImplementedError("Muon does not support tensor parallelism yet; use tp_size=1")
+            raise NotImplementedError(f"{type(self).__name__} does not support tensor parallelism yet; use tp_size=1")
         self.dp_group = dp_group
         self.shard_to_working_param = dict(shard_to_working_param or {})
         world_size = dist.get_world_size(dp_group)
@@ -195,9 +200,9 @@ class Muon(DistributedOptim):
                     continue
                 if working.ndim != 2 or p.numel() != -(-working.numel() // world_size):
                     raise ValueError(
-                        f"a {tuple(working.shape)} Muon parameter arrives as a shard of {p.numel()} elements, not one "
+                        f"a {tuple(working.shape)} matrix arrives as a shard of {p.numel()} elements, not one "
                         f"of {world_size} equal slices: its shards do not span the data-parallel group (e.g. expert "
-                        "parameters sharded over their own group), which Muon does not support"
+                        f"parameters sharded over their own group), which {type(self).__name__} does not support"
                     )
 
     def _working_param(self, p: Tensor) -> Tensor:
@@ -226,23 +231,20 @@ class Muon(DistributedOptim):
                 self._step_matrix(p, group)
             else:
                 shards.append(p)
-        # every rank holds the same shards in the same order, so the gathers line up
+        # every rank holds the same shards in the same order, so the collectives line up
         for bucket in self._buckets(shards):
             inputs = [self._momentum_update(p, group) for p in bucket]
-            for p, update in zip(bucket, self._orthogonalize_shards(bucket, inputs, group)):
-                self._apply_update(p, update, self._working_param(p).shape, group)
+            self._apply_shard_updates(bucket, self._orthogonalize_shards(bucket, inputs, group), group)
 
     def _step_matrix(self, p: Tensor, group: Dict) -> None:
         if p.grad.ndim != 2:
             # A sharded 1D view that setup_distributed was not told about.
             raise RuntimeError(
-                f"Muon needs the full 2D gradient but got shape {tuple(p.grad.shape)}; under ZeRO the plugin has to "
-                "call setup_distributed (LowLevelZeroPlugin does), and Gemini / FSDP are not supported"
+                f"{type(self).__name__} needs the full 2D gradient but got shape {tuple(p.grad.shape)}; under ZeRO "
+                "the plugin has to call setup_distributed (LowLevelZeroPlugin does), and Gemini / FSDP are not "
+                "supported"
             )
-        update = zeropower_via_newtonschulz(
-            self._momentum_update(p, group), group["ns_coefficients"], group["ns_steps"], group["eps"]
-        )
-        self._apply_update(p, update, p.shape, group)
+        self._apply_update(p, self._orthogonalize(self._momentum_update(p, group), group), group)
 
     def _momentum_update(self, p: Tensor, group: Dict) -> Tensor:
         """Update ``p``'s momentum buffer and return the Newton-Schulz input; elementwise, so shards work too."""
@@ -254,9 +256,22 @@ class Muon(DistributedOptim):
         buf.lerp_(grad, 1 - momentum)
         return grad.lerp(buf, momentum) if group["nesterov"] else buf
 
+    def _orthogonalize(self, matrix: Tensor, group: Dict) -> Tensor:
+        """Orthogonalize a whole matrix; the result is bf16."""
+        return zeropower_via_newtonschulz(matrix, group["ns_coefficients"], group["ns_steps"], group["eps"])
+
+    def _apply_update(self, p: Tensor, update: Tensor, group: Dict) -> None:
+        """Apply weight decay and the orthogonalized ``update`` to a whole matrix."""
+        self._decay_and_add(p, update, p.shape, group)
+
+    def _apply_shard_updates(self, shards: List[Tensor], updates: List[Tensor], group: Dict) -> None:
+        """Apply to each of this rank's ``shards`` its slice of the whole matrix's orthogonalized update."""
+        for p, update in zip(shards, updates):
+            self._decay_and_add(p, update, self._working_param(p).shape, group)
+
     @staticmethod
-    def _apply_update(p: Tensor, update: Tensor, shape: torch.Size, group: Dict) -> None:
-        """Apply weight decay and the orthogonalized ``update``; ``shape`` is the whole matrix's, for the lr scale."""
+    def _decay_and_add(p: Tensor, update: Tensor, shape: torch.Size, group: Dict) -> None:
+        # elementwise, so the same for a matrix and a shard; ``shape`` is the whole matrix's, for the lr scale
         lr = group["lr"]
         p.mul_(1 - lr * group["weight_decay"])
         p.add_(update, alpha=-_adjust_lr(lr, group["adjust_lr_fn"], shape))
@@ -275,11 +290,7 @@ class Muon(DistributedOptim):
     def _orthogonalize_shards(self, shards: List[Tensor], inputs: List[Tensor], group: Dict) -> List[Tensor]:
         """Gather the whole Newton-Schulz inputs of ``shards``, orthogonalize them and return each rank's slices."""
         world_size, rank = dist.get_world_size(self.dp_group), dist.get_rank(self.dp_group)
-        # gloo gathers CPU tensors; NCCL (and Newton-Schulz) want the accelerator
-        if dist.get_backend(self.dp_group) == dist.Backend.GLOO:
-            device = torch.device("cpu")
-        else:
-            device = get_accelerator().get_current_device()
+        device = self._collective_device()
         local = torch.cat([x.to(device=device, dtype=torch.bfloat16).flatten() for x in inputs])
         gathered = torch.empty(world_size * local.numel(), dtype=local.dtype, device=device)
         dist.all_gather_into_tensor(gathered, local, group=self.dp_group)
@@ -290,10 +301,16 @@ class Muon(DistributedOptim):
             working, n = self._working_param(p), p.numel()
             matrix = gathered[:, offset : offset + n].reshape(-1)[: working.numel()].view(working.shape)
             offset += n
-            update = zeropower_via_newtonschulz(matrix, group["ns_coefficients"], group["ns_steps"], group["eps"])
+            update = self._orthogonalize(matrix, group)
             update = F.pad(update.flatten(), (0, world_size * n - working.numel())).view(world_size, n)[rank]
             updates.append(update.to(p.device))
         return updates
+
+    def _collective_device(self) -> torch.device:
+        # gloo communicates CPU tensors; NCCL (and Newton-Schulz) want the accelerator
+        if dist.get_backend(self.dp_group) == dist.Backend.GLOO:
+            return torch.device("cpu")
+        return get_accelerator().get_current_device()
 
     def _adamw_step(self, group: Dict) -> None:
         lr, weight_decay, eps = group["lr"], group["weight_decay"], group["eps"]

@@ -539,8 +539,8 @@ class TorchFSDPPlugin(DPPluginBase):
     ) -> Tuple[nn.Module, OptimizerWrapper, Callable, DataLoader, LRScheduler]:
         if isinstance(optimizer, Muon):
             raise NotImplementedError(
-                "TorchFSDPPlugin does not support Muon: FSDP hands the optimizer flattened parameters in one group. "
-                "Use LowLevelZeroPlugin (ZeRO stage 1 or 2) or TorchDDPPlugin."
+                f"TorchFSDPPlugin does not support {type(optimizer).__name__}: FSDP hands the optimizer flattened "
+                "parameters in one group. Use LowLevelZeroPlugin (ZeRO stage 1 or 2) or TorchDDPPlugin."
             )
         # wrap the model with PyTorch FSDP
         fsdp_model = TorchFSDPModel(model, device_id=torch.cuda.current_device(), **self.fsdp_kwargs)

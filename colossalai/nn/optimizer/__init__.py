@@ -16,6 +16,7 @@ from .hybrid_adam import HybridAdam
 from .lamb import Lamb
 from .lars import Lars
 from .muon import Muon, muon_param_groups
+from .orscale import OrScale
 
 from .adafactor import Adafactor  # noqa
 
@@ -39,6 +40,7 @@ __all__ = [
     "DistributedAdaFactor",
     "Muon",
     "muon_param_groups",
+    "OrScale",
 ]
 
 optim2DistOptim = {
