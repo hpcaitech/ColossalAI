@@ -35,7 +35,7 @@ def validate_case_matches_checkpoint(do_lower_case, init_checkpoint):
     if not init_checkpoint:
         return
 
-    m = re.match("^.*?([A-Za-z0-9_-]+)/bert_model.ckpt", init_checkpoint)
+    m = re.match("^.*?([\w-]+)/bert_model.ckpt", init_checkpoint)
     if m is None:
         return
 
