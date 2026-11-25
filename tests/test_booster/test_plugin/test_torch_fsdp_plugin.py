@@ -8,6 +8,7 @@ from colossalai.booster import Booster
 
 if version.parse(torch.__version__) >= version.parse("1.12.0"):
     from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+
     from colossalai.booster.plugin import TorchFSDPPlugin
 
 from colossalai.interface import OptimizerWrapper
