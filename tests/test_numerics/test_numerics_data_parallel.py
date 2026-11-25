@@ -11,7 +11,7 @@ from torch import nn
 
 from colossalai.accelerator import get_accelerator
 from colossalai.booster.plugin import LowLevelZeroPlugin, TorchDDPPlugin
-from colossalai.testing import free_port, rerun_if_address_is_in_use
+from colossalai.testing import rerun_if_address_is_in_use
 from tests.kit.numerics import NumericsSpec, TokenLoss, judge_relative_bound, relative_bound
 from tests.kit.numerics.capture.training import default_optimizer
 from tests.kit.numerics.scenarios import data_parallel, resume
@@ -243,11 +243,19 @@ def test_gemini_accumulation_needs_its_flag():
 
 @pytest.mark.parametrize("scenario", [data_parallel, resume], ids=["data_parallel", "resume"])
 @pytest.mark.parametrize("failure", [None, "prepare", "train", "save"], ids=["success", "prepare", "train", "save"])
-@rerun_if_address_is_in_use()
 def test_worker_releases_process_group(scenario, failure, tmp_path, monkeypatch):
     """Workers release real process groups after success or an error, preserving the original error."""
     assert not dist.is_initialized()
     path = tmp_path / "trace.safetensors"
+    real_init_process_group = dist.init_process_group
+
+    def init_process_group(*args, **kwargs):
+        # This one-rank lifecycle check needs no TCP rendezvous. A per-test
+        # FileStore avoids the race between probing a port and binding it.
+        kwargs["init_method"] = (tmp_path / "rendezvous").as_uri()
+        return real_init_process_group(*args, **kwargs)
+
+    monkeypatch.setattr(dist, "init_process_group", init_process_group)
     barriers = []
     real_barrier = dist.barrier
 
@@ -260,7 +268,7 @@ def test_worker_releases_process_group(scenario, failure, tmp_path, monkeypatch)
     kwargs = dict(
         rank=0,
         world_size=1,
-        port=free_port(),
+        port=0,  # The per-test FileStore replaces TCP rendezvous.
         entry=ENTRY,
         plugin_fn=TorchDDPPlugin,
         mixed_precision=None,
