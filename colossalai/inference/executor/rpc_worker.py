@@ -1,4 +1,6 @@
-from typing import List, Tuple, Union
+import pickle
+from contextlib import nullcontext
+from typing import List, Optional, Tuple, Union
 
 import rpyc
 import torch
@@ -51,6 +53,25 @@ class rpcWorkerService(rpyc.Service):
     def exposed_init_dist_env(self, rank, world_size, master_address, master_port):
         logger.info(f"init process group for rank {rank}")
         colossalai.launch(rank=rank, world_size=world_size, port=master_port, host=master_address)
+        self.rank = rank
+
+        self.profiling = False
+        self.profiler = (
+            torch.profiler.profile(
+                record_shapes=True,
+                with_stack=True,
+                with_modules=True,
+                activities=[
+                    torch.profiler.ProfilerActivity.CPU,
+                    torch.profiler.ProfilerActivity.CUDA,
+                ],
+                # schedule=torch.profiler.schedule(wait=0, repeat=1, active=1),
+                # on_trace_ready=torch.profiler.tensorboard_trace_handler(f"./tb_log_{args.batch_size}_" + args.mode),
+            )
+            if self.profiling
+            else nullcontext()
+        )
+
         logger.info(f"init process group done for rank {rank}")
 
     def exposed_init_model(
@@ -98,38 +119,53 @@ class rpcWorkerService(rpyc.Service):
         logger.info("physical cache init over")
 
     def exposed_execute_model_forward(
-        self, input_token_ids_param: List[int], input_meta_data_param: dict, generation_config_param: dict
+        self,
+        input_token_ids_param: Optional[List[int]] = None,
+        input_meta_data_param: Optional[dict] = None,
+        generation_config_param: Optional[dict] = None,
     ):
-        # prepare the data for model forward
-        input_meta_data = InputMetaData.from_rpc_param(input_meta_data_param)
-        input_meta_data.fd_inter_tensor = self.fd_inter_tensor
-        if input_meta_data.is_prompts:
-            n_tokens = input_meta_data.sequence_lengths.sum().item()
-        else:
-            n_tokens = input_meta_data.batch_size
-        input_token_ids = torch.tensor(input_token_ids_param, dtype=torch.int, device=self.device)
+        with self.profiler:
+            # prepare the data for model forward
+            input_token_ids, input_meta_data, generation_config = self._broadcast_param_to_all_workers(
+                input_token_ids_param=input_token_ids_param,
+                input_meta_data_param=input_meta_data_param,
+                generation_config_param=generation_config_param,
+            )
 
-        # execute the model
-        logits = self.model(
-            input_token_ids,
-            self.output_tensor[:n_tokens],
-            input_meta_data,
-            self.k_cache,
-            self.v_cache,
-        )
+            if input_meta_data.is_prompts:
+                n_tokens = input_meta_data.sequence_lengths.sum().item()
+            else:
+                n_tokens = input_meta_data.batch_size
 
-        # sampler
-        if self.inference_config.pad_input:
-            logits = logits[:, -1, :]
-        next_tokens = search_tokens(
-            generation_config_param,
-            logits,
-            input_meta_data.is_prompts,
-            input_meta_data.batch_token_ids,
-        )
+            # execute the model
+            logits = self.model(
+                input_token_ids,
+                self.output_tensor[:n_tokens],
+                input_meta_data,
+                self.k_cache,
+                self.v_cache,
+            )
 
-        # return the tokens generated to scheduler
-        return next_tokens.tolist()
+            if self.profiling:
+                self.profiler.step()
+
+        self.record()
+
+        if self.rank == 0:
+            # sampler
+            if self.inference_config.pad_input:
+                logits = logits[:, -1, :]
+            next_tokens = search_tokens(
+                generation_config,
+                logits,
+                input_meta_data.is_prompts,
+                input_meta_data.batch_token_ids,
+            )
+
+            # return the tokens generated to scheduler
+            # only rank 0 need to pass the data back
+            # to reduce the overhead of rpc param passing
+            return next_tokens.cpu()
 
     def _init_output_tensor(self):
         alloc_shape = (
@@ -165,6 +201,85 @@ class rpcWorkerService(rpyc.Service):
         )
 
         self.fd_inter_tensor = fd_inter_tensor
+
+    def _broadcast_param_to_all_workers(
+        self,
+        input_token_ids_param: Optional[List[int]] = None,
+        input_meta_data_param: Optional[dict] = None,
+        generation_config_param: Optional[dict] = None,
+    ):
+        if self.rank == 0:
+            input_token_ids_param = pickle.loads(input_token_ids_param)
+            input_meta_data_param = pickle.loads(input_meta_data_param)
+            generation_config_param = pickle.loads(generation_config_param)
+
+            input_meta_data = InputMetaData.from_rpc_param(input_meta_data_param)
+            input_meta_data.fd_inter_tensor = self.fd_inter_tensor
+            input_token_ids = torch.tensor(input_token_ids_param, dtype=torch.int, device=self.device)
+            generation_config = generation_config_param
+
+            if dist.get_world_size() > 1:
+                broadcast_list = {}
+                for k, v in input_meta_data_param.items():
+                    if not isinstance(v, torch.Tensor):
+                        broadcast_list[k] = v
+
+                # Pass the tensor shape and type in advance for
+                # other workers to prepare the empty tensor and async transport tensors
+                broadcast_list["block_tables"] = (
+                    input_meta_data.block_tables.size(),
+                    input_meta_data.block_tables.dtype,
+                )
+                broadcast_list["sequence_lengths"] = (
+                    input_meta_data.sequence_lengths.size(),
+                    input_meta_data.sequence_lengths.dtype,
+                )
+                broadcast_list["input_token_ids"] = (input_token_ids.size(), input_token_ids.dtype)
+
+                # Generation Config Param
+                broadcast_list["generation_config"] = generation_config_param
+
+                # send some meta data and some tensor shape
+                torch.distributed.broadcast_object_list([broadcast_list], src=self.rank)
+
+                # send the real tensor
+                torch.distributed.broadcast(input_meta_data.block_tables, src=self.rank)
+                torch.distributed.broadcast(input_meta_data.sequence_lengths, src=self.rank)
+                torch.distributed.broadcast(input_token_ids, src=self.rank)
+
+        else:
+            assert input_meta_data_param is None, "Input Must Be None"
+
+            # recv the meta data
+            recv_list = [None]
+            torch.distributed.broadcast_object_list(recv_list, src=0)
+            input_meta_data_param = recv_list[0]
+
+            generation_config = input_meta_data_param["generation_config"]
+
+            blocktable_shape, blocktable_type = input_meta_data_param["block_tables"]
+            blocktables = torch.empty(blocktable_shape, dtype=blocktable_type, device=self.device)
+            sequence_lengths_shape, sequence_lengths_type = input_meta_data_param["sequence_lengths"]
+            sequence_lengths = torch.empty(sequence_lengths_shape, dtype=sequence_lengths_type, device=self.device)
+            input_token_ids_shape, input_token_ids_type = input_meta_data_param["input_token_ids"]
+            input_token_ids = torch.empty(input_token_ids_shape, dtype=input_token_ids_type, device=self.device)
+
+            # recv the real tensor
+            async1 = torch.distributed.broadcast(blocktables, src=0, async_op=True)
+            async2 = torch.distributed.broadcast(sequence_lengths, src=0, async_op=True)
+            async3 = torch.distributed.broadcast(input_token_ids, src=0, async_op=True)
+
+            input_meta_data_param["sequence_lengths"] = sequence_lengths
+            input_meta_data_param["block_tables"] = blocktables
+
+            input_meta_data = InputMetaData.from_rpc_param(input_meta_data_param)
+            input_meta_data.fd_inter_tensor = self.fd_inter_tensor
+
+            async1.wait()
+            async2.wait()
+            async3.wait()
+
+        return input_token_ids, input_meta_data, generation_config
 
     def _init_model(self, model_or_path: Union[nn.Module, str], model_policy: Policy = None):
         """
@@ -306,3 +421,9 @@ class rpcWorkerService(rpyc.Service):
         logger.info(f"Worker rank {dist_rank}: Sum after all_reduce: {data.item()}")
 
         return data.item()
+
+    def record(self):
+        if self.profiling:
+            file = "/home/lurunyu/projects/ColossalAI/test_trace_rpc.json"
+            self.profiler.export_chrome_trace(file)
+            logger.info(f"trace has been saved into {file}")
