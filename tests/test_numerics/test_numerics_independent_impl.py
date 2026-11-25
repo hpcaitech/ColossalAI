@@ -6,7 +6,6 @@ import pytest
 import torch
 from torch import nn
 
-import colossalai
 from colossalai.accelerator import get_accelerator
 from colossalai.booster.mixed_precision import BF16MixedPrecision
 from colossalai.booster.plugin import HybridParallelPlugin, LowLevelZeroPlugin, TorchDDPPlugin
@@ -14,6 +13,7 @@ from colossalai.testing import rerun_if_address_is_in_use, spawn
 from tests.kit.numerics import NumericsSpec, Routers, Trace
 from tests.kit.numerics.capture.recipes import Recipe, UnsupportedRecipe, recipe_for
 from tests.kit.numerics.capture.training import prepare, run_reference
+from tests.kit.numerics.scenarios._distributed import worker
 from tests.kit.numerics.scenarios.independent_impl import (
     _worse_of,
     blank_control,
@@ -63,6 +63,11 @@ class RenamedMLP(nn.Module):
         return {"y": self.out(h)}
 
 
+class WrongTinyMLP(TinyMLP):
+    def forward(self, x):
+        return {"y": super().forward(x)["y"] * 2}
+
+
 PARAMS = [f"fc{i}.{p}" for i in (1, 2) for p in ("weight", "bias")]
 TRACE_NAMES = (
     {"out/y", "grad/x"}
@@ -87,12 +92,8 @@ def _entry(spec=NumericsSpec()):
 BUGGY = NumericsSpec(reference_fn=lambda: RenamedMLP(drop_column=True), param_map=_rename)
 
 
-def _launch(rank, world_size, port):
-    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port)
-
-
+@worker
 def _check_aligned(rank, world_size, port, plugin_fn, mixed_precision):
-    _launch(rank, world_size, port)
     for spec in (NumericsSpec(), NumericsSpec(reference_fn=RenamedMLP, param_map=_rename)):
         report = check_training(_entry(spec), plugin_fn(), mixed_precision, steps=STEPS)
         assert {e.name for e in report.entries} == TRACE_NAMES
@@ -101,8 +102,8 @@ def _check_aligned(rank, world_size, port, plugin_fn, mixed_precision):
         assert all(e.ratio == pytest.approx(1.0) for e in report.entries), report.format()
 
 
+@worker
 def _check_bug_detected(rank, world_size, port, plugin_fn, mixed_precision):
-    _launch(rank, world_size, port)
     report = check_training(_entry(BUGGY), plugin_fn(), mixed_precision, steps=STEPS)
     failed = {e.name for e in report.failures}
     # the tensors a dropped column moves far beyond bf16 noise (ratio > 15); weights after one AdamW step are not
@@ -111,11 +112,19 @@ def _check_bug_detected(rank, world_size, port, plugin_fn, mixed_precision):
     assert expected <= failed, report.format()
 
 
+@worker
 def _check_blank_control(rank, world_size, port):
-    _launch(rank, world_size, port)
     blank_control(_entry(), steps=STEPS)
     with pytest.raises(AssertionError, match="blank control"):
         blank_control(_entry(BUGGY))
+    # A declared self-control validates the reference recipe. It must not turn the candidate comparison into
+    # a self-comparison: this deliberately broken candidate still fails the independent check.
+    spec = NumericsSpec(reference_fn=TinyMLP, blank_control_fn=TinyMLP)
+    entry = (WrongTinyMLP, _data, lambda out: out, None, _attribute(spec))
+    blank_control(entry, steps=STEPS).assert_pass()
+    assert not check_training(entry, TorchDDPPlugin(), steps=STEPS).passed
+    with pytest.raises(ValueError, match="param_map=None"):
+        blank_control(_entry(NumericsSpec(blank_control_fn=TinyMLP, param_map=_rename)))
 
 
 @rerun_if_address_is_in_use()
@@ -210,8 +219,8 @@ REJECTED = [
 ]
 
 
+@worker
 def _check_rejected(rank, world_size, port):
-    _launch(rank, world_size, port)
     for plugin_fn, mixed_precision, match in REJECTED:
         with pytest.raises(UnsupportedRecipe, match=match):
             recipe_for(plugin_fn(), mixed_precision)
@@ -237,8 +246,8 @@ class _WithUnusedBranch(TinyMLP):
         self.head = nn.Linear(32, 8)  # never called
 
 
+@worker
 def _check_missing_gradients(rank, world_size, port):
-    _launch(rank, world_size, port)
     # DDP must be told about the unused branch, or it waits for its gradient
     plugin_fn = partial(TorchDDPPlugin, find_unused_parameters=True)
     entry = (_WithUnusedBranch, _data, lambda out: out, None, _attribute(NumericsSpec()))
@@ -305,8 +314,8 @@ def _hidden(output):
     return {"hidden": output.last_hidden_state}
 
 
+@worker
 def _check_shardformer(rank, world_size, port, precision):
-    _launch(rank, world_size, port)
     entry = (_tiny_llama, _tokens, _hidden, None, _attribute(NumericsSpec()))
     plugin = HybridParallelPlugin(tp_size=1, pp_size=1, precision=precision)
     check_training(entry, plugin, steps=STEPS).assert_pass()
@@ -343,8 +352,8 @@ class _TinyMoE(nn.Module):
         return {"y": out}
 
 
+@worker
 def _check_routing_in_training(rank, world_size, port):
-    _launch(rank, world_size, port)
     spec = NumericsSpec(routers=Routers(select=lambda name, module: name == "gate", top_k=2))
     entry = (_TinyMoE, _data, lambda out: out, None, _attribute(spec))
     report = check_training(entry, TorchDDPPlugin(), steps=STEPS)
@@ -375,8 +384,8 @@ def _plugin(name):
     }[name]()
 
 
+@worker
 def _check_plugin(rank, world_size, port, name):
-    _launch(rank, world_size, port)
     entry = (_tiny_llama, _tokens, _hidden, None, _attribute(NumericsSpec()))
     report = check_training(entry, _plugin(name), steps=STEPS)
     report.assert_pass()
@@ -397,8 +406,8 @@ def test_plugin_aligned(name):
     spawn(_check_plugin, 1, name=name)
 
 
+@worker
 def _unverified_plugins(rank, world_size, port):
-    _launch(rank, world_size, port)
     from torch.distributed.fsdp import CPUOffload, MixedPrecision
 
     from colossalai.booster.plugin import GeminiPlugin, TorchFSDPPlugin
@@ -436,8 +445,8 @@ def _freeze_tower(model):
     model.tower.requires_grad_(False)
 
 
+@worker
 def _check_prepare_fn(rank, world_size, port):
-    _launch(rank, world_size, port)
     entry = (_Tower, _data, lambda out: out, None, _attribute(NumericsSpec(prepare_fn=_freeze_tower)))
     s = prepare(entry)
     assert not s.model.tower.weight.requires_grad and s.model.head.weight.requires_grad
@@ -492,10 +501,10 @@ def test_optimizer_update_rule():
     assert {e.name for e in buggy.failures} >= {f"param/0/{p}" for p in PARAMS}
 
 
+@worker
 def _check_cache(rank, world_size, port, directory):
     import os
 
-    _launch(rank, world_size, port)
     plugin = TorchDDPPlugin()
     first = training_traces(_entry(), plugin, steps=STEPS, cache_dir=directory)
     files = sorted(os.listdir(os.path.join(directory, "custom")))
@@ -519,8 +528,8 @@ def _matrices_only(params):
     return torch.optim.AdamW([p for p in params if p.dim() > 1], lr=1e-3)
 
 
+@worker
 def _check_optimizer_coverage(rank, world_size, port):
-    _launch(rank, world_size, port)
     report = check_training(_entry(), TorchDDPPlugin(), steps=STEPS, optimizer_fn=_matrices_only)
     # both sides leave the biases untouched, so every comparison passes; only the contract catches it
     failed = {e.name: e.reason for e in report.failures}
@@ -562,8 +571,8 @@ def _tied_entry(spec):
     return (_TiedLM, _ids, lambda out: out, None, _attribute(spec))
 
 
+@worker
 def _check_tied(rank, world_size, port, name):
-    _launch(rank, world_size, port)
     plugin_fn = TorchDDPPlugin if name is None else partial(_plugin, name)
     report = check_training(_tied_entry(NumericsSpec(tied_params=TIED)), plugin_fn(), steps=STEPS)
     report.assert_pass()
@@ -609,8 +618,8 @@ def _checkpointed(model):
     _count_layer_calls(model)
 
 
+@worker
 def _check_gradient_checkpointing(rank, world_size, port, name):
-    _launch(rank, world_size, port)
     plugin_fn = {
         "ddp_fp32": TorchDDPPlugin,
         "shardformer_bf16": partial(HybridParallelPlugin, tp_size=1, pp_size=1, precision="bf16"),

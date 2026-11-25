@@ -16,6 +16,7 @@ from .opt import *
 from .ouro import *
 from .qwen2 import *
 from .qwen3 import *
+from .qwen3_moe import *
 from .sam import *
 from .t5 import *
 from .vit import *

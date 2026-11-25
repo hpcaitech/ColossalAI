@@ -13,6 +13,7 @@ from colossalai.testing import rerun_if_address_is_in_use
 from tests.kit.numerics import NumericsSpec
 from tests.kit.numerics.acceptance import CONFIGS, _entry_config, run_acceptance
 from tests.kit.numerics.scenarios import resume
+from tests.kit.numerics.scenarios._distributed import worker
 
 ENTRY = "transformers_gemma4_e2b_for_causal_lm"
 GPU = pytest.mark.skipif(not torch.cuda.is_available(), reason="requires one CUDA GPU")
@@ -91,13 +92,11 @@ def test_gemma4_fp16_finite_updates(name):
     assert report["recipe_overrides"] == {"fp16_initial_loss_scale": 1024.0}
 
 
+@worker
 def _amp_checkpoint_worker(rank, world_size, port, directory, shard):
-    import colossalai
     from colossalai.booster import Booster
     from colossalai.booster.mixed_precision.fp16_torch import FP16TorchMixedPrecision
     from colossalai.booster.plugin import TorchDDPPlugin
-
-    colossalai.launch(rank=rank, world_size=world_size, host="localhost", port=port)
 
     def build(scale, growth_interval):
         model = torch.nn.Linear(3, 2).cuda()

@@ -22,6 +22,8 @@ The reference is also run twice (as PyTorch does before its accuracy checks): te
 runs come from nondeterministic kernels, and the worse of the two runs is used as ``ref`` for them.
 """
 
+import copy
+from dataclasses import replace
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 import torch
@@ -182,6 +184,18 @@ def blank_control(
     precision="bf16")`` (``TorchDDPPlugin()`` in float32 on CPU, where LowLevelZero cannot run), the same AdamW on
     both sides. Every tensor's error must then be within ``slack`` times the baseline error.
     """
+    if isinstance(entry, str):
+        from tests.kit.model_zoo import model_zoo
+
+        entry = model_zoo[entry]
+    model_fn, data_fn, output_fn, loss_fn, attribute = entry
+    spec = attribute.numerics
+    if spec.blank_control_fn is not None:
+        if spec.param_map is not None:
+            raise ValueError("blank_control_fn requires identical parameter names (param_map=None)")
+        attribute = copy.copy(attribute)
+        attribute.numerics = replace(spec, reference_fn=None, blank_control_fn=None)
+        entry = (spec.blank_control_fn, data_fn, output_fn, loss_fn, attribute)
     if get_accelerator().name == "cpu":
         plugin = TorchDDPPlugin()
     else:
