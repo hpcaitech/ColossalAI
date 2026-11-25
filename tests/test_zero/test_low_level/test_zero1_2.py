@@ -211,6 +211,35 @@ def exam_zero_1_torch_ddp(dtype: torch.dtype, master_weights: bool, extra_dp_siz
             loose_close(p, z1p, dtype=dtype)
 
 
+def exam_adagrad_initialized_state():
+    """Adagrad initializes state before ZeRO replaces parameters with master shards."""
+    rank = dist.get_rank()
+    world_size = dist.get_world_size()
+    seed_all(1024)
+    model = MlpModel().cuda().half()
+    optimizer = torch.optim.Adagrad(model.parameters(), lr=1e-3, initial_accumulator_value=0.25)
+    initialized_sums = {param: optimizer.state[param]["sum"].clone() for param in model.parameters()}
+
+    optimizer = LowLevelZeroOptimizer(
+        optimizer,
+        initial_scale=8.332635365271916,
+        partition_grad=True,
+    )
+
+    for working_params, master_params in zip(
+        optimizer._working_param_groups.values(), optimizer._master_param_groups_of_current_rank.values()
+    ):
+        for working_param, master_param in zip(working_params, master_params):
+            expected_sum = split_ddp_grad(initialized_sums[working_param], world_size)[rank].float()
+            assert_close(optimizer.optim.state[master_param]["sum"], expected_sum)
+            assert optimizer.optim.state[master_param]["step"].device.type == "cpu"
+            assert working_param not in optimizer.optim.state
+
+    output = model(torch.randn(8, 123, device="cuda", dtype=torch.float16))
+    optimizer.backward(output.float().square().mean())
+    optimizer.step()
+
+
 def run_dist(rank, world_size, port):
     colossalai.launch(rank=rank, world_size=world_size, port=port, host="localhost")
 
@@ -218,10 +247,21 @@ def run_dist(rank, world_size, port):
     exam_zero_1_2()
 
 
+def run_adagrad_dist(rank, world_size, port):
+    colossalai.launch(rank=rank, world_size=world_size, port=port, host="localhost")
+    exam_adagrad_initialized_state()
+
+
 @pytest.mark.dist
 @rerun_if_address_is_in_use()
 def test_zero_1_2():
     spawn(run_dist, 4)
+
+
+@pytest.mark.dist
+@rerun_if_address_is_in_use()
+def test_adagrad_initialized_state():
+    spawn(run_adagrad_dist, 2)
 
 
 if __name__ == "__main__":
