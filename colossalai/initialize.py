@@ -27,11 +27,10 @@ def launch(
     seed: int = 1024,
     verbose: bool = True,
 ):
-    """This function first parses the configuration arguments, using :func:`parse_args()` in case one of the input
-    arguments are not given. Then initialize and set distributed environment by calling global_context's functions.
+    """Initialize the distributed environment: create the default process group, set the accelerator
+    device for this process and seed it.
 
     Args:
-        config (Union[str, dict, Config]): Config file or config file path are both acceptable
         rank (int): Rank for the default process group
         world_size (int): World size of the default process group
         host (str): The master address for distributed training
@@ -42,9 +41,6 @@ def launch(
             defaults to None. If local_rank = None, the default device ordinal will be calculated automatically.
         seed (int, optional): Specified random seed for every process. Defaults to 1024.
         verbose (bool, optional): Whether to print logs. Defaults to True.
-
-    Raises:
-        Exception: Raise exception when config type is wrong
     """
 
     cur_accelerator = get_accelerator()
@@ -86,7 +82,6 @@ def launch_from_slurm(
     set by SLURM
 
     Args:
-        config (Union[str, dict, Config]): Config file or config file path are both acceptable
         host (str): The master address for distributed training
         port (str): The master port for distributed training
         backend (str, optional): Backend for ``torch.distributed``, defaults to ``nccl``
@@ -123,7 +118,6 @@ def launch_from_openmpi(
     set by OpenMPI
 
     Args:
-        config (Union[str, dict, Config]): Config file or config file path are both acceptable
         host (str): The master address for distributed training
         port (str): The master port for distributed training
         backend (str, optional): Backend for ``torch.distributed``, defaults to ``nccl``
@@ -156,7 +150,6 @@ def launch_from_torch(backend: str = "nccl", seed: int = 1024, verbose: bool = T
     from the environment variables set by PyTorch
 
     Args:
-        config (Union[str, dict, Config]): Config file or config file path are both acceptable
         backend (str, optional): Backend for ``torch.distributed``, defaults to ``nccl``
         seed (int, optional): Specified random seed for every process. Defaults to 1024.
         verbose (bool, optional): Whether to print logs. Defaults to True.
